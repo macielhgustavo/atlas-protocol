@@ -37,7 +37,8 @@ Paginação:
 - máximo 100;
 - ordenação: `sortBy` e `sortOrder=asc|desc`;
 - filtros de intervalo: `dateFrom` e `dateTo`;
-- ordenação padrão quando não especificada: `createdAt desc`.
+- ordenação padrão quando não especificada: `createdAt desc`, salvo regra
+  específica do recurso.
 
 ## 2. Envelope de resposta
 
@@ -708,12 +709,15 @@ Filtros oficiais: `dateFrom` e `dateTo`.
 
 ### POST `/tracking-records`
 
-Profissional vinculado ou atleta quando permitido.
+Profissional `approved` com vínculo `active` ou atleta dentro do fluxo
+manual próprio.
+
+Payload do profissional:
 
 ```json
 {
   "athleteId": "ObjectId",
-  "protocolId": "ObjectId",
+  "protocolId": "ObjectId opcional",
   "type": "manual",
   "title": "Registro de acompanhamento",
   "scheduledFor": "2026-08-05T11:00:00.000Z",
@@ -721,7 +725,39 @@ Profissional vinculado ou atleta quando permitido.
 }
 ```
 
-`protocolId` é opcional.
+Payload do atleta:
+
+```json
+{
+  "type": "manual",
+  "title": "Registro de acompanhamento",
+  "scheduledFor": "2026-08-05T11:00:00.000Z",
+  "notes": "Observação opcional."
+}
+```
+
+Regras:
+
+- atleta cria somente tracking próprio `manual`, sem `protocolId` e com
+  `professionalId=null`;
+- `athleteId` e `createdBy` do atleta são derivados do JWT;
+- profissional não envia `professionalId` ou `createdBy`; ambos são derivados
+  do JWT;
+- protocolo, quando informado pelo profissional, deve estar `active`,
+  pertencer ao atleta e ao profissional autenticado;
+- `draft`, `paused`, `closed` e `cancelled` são rejeitados;
+- campos `professionalId`, `createdBy` e `protocolItemId` nunca são aceitos do
+  cliente;
+- `type` é obrigatório; profissional pode criar `scheduled` ou `manual`, com
+  protocolo opcional;
+- status inicial é sempre `scheduled`;
+- sucesso gera exatamente um `TRACKING_CREATED`.
+
+Operações de recurso único retornam o TrackingRecord serializado diretamente
+em `data`, com os campos oficiais `id`, `athleteId`, `professionalId`,
+`protocolId`, `protocolVersion`, `type`, `title`, `scheduledFor`, `status`,
+`statusReason`, `completedAt`, `completedBy`, `notes`, `createdBy`,
+`createdAt` e `updatedAt`.
 
 ### GET `/tracking-records`
 
@@ -734,9 +770,34 @@ Filtros:
 - `dateFrom`
 - `dateTo`
 - paginação
-- ordenação
+- `sortBy=scheduledFor|createdAt`
+- `sortOrder=asc|desc`
+
+Ordenação padrão:
+
+```text
+sortBy=scheduledFor
+sortOrder=asc
+```
+
+Campos de ordenação diferentes retornam `VALIDATION_ERROR`.
+
+Não são aceitos `from`, `to` ou `professionalId` como filtros.
+
+`dateFrom` e `dateTo` filtram `scheduledFor` de forma inclusiva.
+
+Escopo:
+
+- admin lista todos;
+- atleta lista somente os próprios;
+- profissional `approved` lista somente atletas com vínculo `active`;
+- filtros enviados pelo cliente nunca ampliam o escopo.
 
 ### GET `/tracking-records/:id`
+
+Admin consulta qualquer registro. Atleta consulta somente registro próprio.
+Profissional `approved` consulta somente registro de atleta com vínculo
+`active`. Recurso fora do escopo retorna `RESOURCE_NOT_FOUND`.
 
 ### PATCH `/tracking-records/:id/status`
 
@@ -767,9 +828,31 @@ Transições válidas:
 scheduled -> completed | missed | cancelled
 ```
 
+Regras:
+
+- transição para `completed` aceita `completedAt` e `notes`; `reason` não é
+  usado;
+- `notes` não é aceito em transições para `missed` ou `cancelled`;
+- `completed` preenche `completedAt` e `completedBy` e mantém
+  `statusReason=null`;
+- `missed` e `cancelled` exigem `reason` string com trim, entre 1 e 500
+  caracteres;
+- `missed` e `cancelled` persistem o motivo em `statusReason` e mantêm
+  `completedAt` e `completedBy` nulos;
+- atleta conclui tracking próprio;
+- atleta cancela somente tracking próprio, `manual` e criado por ele;
+- atleta nunca marca `missed`;
+- profissional precisa estar `approved` e manter vínculo `active`;
+- admin não usa este endpoint;
+- a transição é atômica e somente a vencedora gera
+  `TRACKING_STATUS_CHANGED`.
+
+Estado final ou transição incompatível retorna `INVALID_STATE_TRANSITION`.
+
 ### PATCH `/tracking-records/:id/correction`
 
-Admin ou profissional autorizado, apenas para correção auditada de registro finalizado.
+Admin ou profissional autorizado, apenas para correção auditada de registro
+`completed`, `missed` ou `cancelled`.
 
 ```json
 {
@@ -777,6 +860,21 @@ Admin ou profissional autorizado, apenas para correção auditada de registro fi
   "reason": "Erro de digitação."
 }
 ```
+
+Regras:
+
+- `notes` é obrigatório no payload e é o único campo alterado; aceita `null`
+  ou string com trim de até 2000 caracteres;
+- `reason` é obrigatório, recebe trim e possui entre 1 e 500 caracteres;
+- o motivo fica somente em metadata segura do AuditLog e não altera
+  `statusReason`;
+- admin corrige qualquer tracking finalizado;
+- profissional precisa estar `approved`, ser o `professionalId` responsável e
+  manter vínculo `active`;
+- profissional não corrige tracking com `professionalId=null`;
+- atleta não corrige;
+- status e campos de conclusão permanecem inalterados;
+- sucesso gera exatamente um `TRACKING_CORRECTED`.
 
 Não existe delete físico.
 
@@ -788,17 +886,57 @@ Atleta.
 
 ```json
 {
-  "protocolId": "ObjectId",
-  "referenceWeek": "2026-08-03T00:00:00.000Z",
+  "protocolId": "ObjectId opcional",
+  "professionalId": "ObjectId condicional",
+  "referenceWeek": "2026-08-03T03:00:00.000Z",
   "responses": {
     "notes": "Registro semanal."
   }
 }
 ```
 
-`protocolId` opcional.
+Regras:
 
-Cria `pending`.
+- `athleteId` vem exclusivamente do JWT e não é aceito no payload;
+- cria status `pending`;
+- `referenceWeek` é normalizada para a segunda-feira correspondente em
+  `America/Sao_Paulo`;
+- ISO date-only (`YYYY-MM-DD`) é tratado como data civil em
+  `America/Sao_Paulo`; datetime com offset é tratado como instante;
+- com `protocolId`, o protocolo precisa pertencer ao atleta, estar `active` e
+  determina o `professionalId`; vínculo `active` é obrigatório;
+- quando `protocolId` e `professionalId` são enviados juntos, o
+  `professionalId` deve coincidir com o profissional do protocolo; valor
+  conflitante retorna `VALIDATION_ERROR`;
+- sem protocolo e sem vínculo `active`, retorna `ATHLETE_LINK_REQUIRED`;
+- sem protocolo e com um único vínculo `active`, o backend deriva o
+  profissional;
+- sem protocolo e com múltiplos vínculos `active`, `professionalId` é
+  obrigatório;
+- `professionalId`, quando informado, deve identificar profissional com
+  vínculo `active`; não existe escolha silenciosa;
+- segundo check-in do atleta na mesma semana retorna
+  `CHECKIN_ALREADY_EXISTS`, inclusive em corrida `E11000`.
+
+Operações de recurso único retornam o CheckIn serializado diretamente em
+`data`, com os campos oficiais `id`, `athleteId`, `professionalId`,
+`protocolId`, `referenceWeek`, `status`, `responses`, `submittedAt`,
+`reviewedAt`, `reviewedBy`, `reviewComment`, `createdAt` e `updatedAt`.
+
+Contrato de `responses`:
+
+- objeto JSON simples obrigatório com 1 a 20 propriedades;
+- tamanho serializado máximo de 16 KB em UTF-8;
+- chaves entre 1 e 50 caracteres;
+- chaves não podem conter `.`, null byte, iniciar com `$` ou ser
+  `__proto__`, `constructor` ou `prototype`;
+- não aceita objetos aninhados, funções, buffers ou tipos especiais;
+- valores permitidos: string, número finito, boolean, `null` ou array de
+  valores escalares permitidos;
+- strings possuem no máximo 1000 caracteres;
+- arrays possuem no máximo 20 elementos e não aceitam objetos ou arrays
+  internos;
+- `answers` e demais campos desconhecidos são rejeitados.
 
 ### GET `/check-ins`
 
@@ -810,12 +948,40 @@ Filtros:
 - `dateFrom`
 - `dateTo`
 - paginação
+- `sortBy=referenceWeek|createdAt|submittedAt`
+- `sortOrder=asc|desc`
+
+Ordenação padrão:
+
+```text
+sortBy=referenceWeek
+sortOrder=desc
+```
+
+`dateFrom` e `dateTo` filtram `referenceWeek` de forma inclusiva.
+
+Escopo:
+
+- admin lista todos;
+- atleta lista somente os próprios;
+- profissional `approved` lista somente check-ins sob vínculo `active`;
+- filtros não ampliam ownership;
+- `sortBy` inválido retorna `VALIDATION_ERROR`.
 
 ### GET `/check-ins/:id`
 
+Admin consulta qualquer check-in completo. Atleta consulta somente o próprio.
+Profissional `approved` consulta somente check-in de atleta com vínculo
+`active`. Recurso fora do escopo retorna `RESOURCE_NOT_FOUND`.
+
 ### PATCH `/check-ins/:id`
 
-Atleta dono, apenas enquanto `pending`.
+Atleta dono, apenas enquanto `pending`. Somente `responses` é aceito e o
+mesmo contrato da criação é aplicado. O objeto enviado substitui integralmente
+o valor anterior; não existe merge implícito de propriedades.
+
+Tentativa de editar check-in `submitted` ou `reviewed` retorna
+`CHECKIN_ALREADY_SUBMITTED`.
 
 ### PATCH `/check-ins/:id/submit`
 
@@ -823,9 +989,17 @@ Atleta dono.
 
 `pending -> submitted`.
 
+O contrato de `responses` é validado novamente antes da transição.
+
+Segunda tentativa de submit ou submit de check-in `reviewed` retorna
+`CHECKIN_ALREADY_SUBMITTED`.
+
+Somente a transição atômica vencedora define `submittedAt` e gera exatamente
+um `CHECKIN_SUBMITTED`.
+
 ### PATCH `/check-ins/:id/review`
 
-Profissional `approved` e vinculado.
+Somente o profissional responsável, `approved` e com vínculo `active`.
 
 ```json
 {
@@ -834,6 +1008,21 @@ Profissional `approved` e vinculado.
 ```
 
 `submitted -> reviewed`.
+
+`reviewComment` é obrigatório, recebe trim e possui entre 1 e 2000
+caracteres.
+
+Revisão de check-in `pending` retorna `CHECKIN_NOT_SUBMITTED`.
+
+Segunda revisão de check-in `reviewed` retorna
+`INVALID_STATE_TRANSITION`.
+
+Profissional diferente do responsável recebe `RESOURCE_NOT_FOUND`.
+
+Somente a transição atômica vencedora define `reviewedAt`, `reviewedBy` e
+gera exatamente um `CHECKIN_REVIEWED`.
+
+Admin não cria, edita, envia ou revisa check-in.
 
 Não existe endpoint de reabertura na V1.
 
@@ -1194,6 +1383,10 @@ DELETE /progress/:id
 DELETE /inventory/:id
 DELETE /notifications/:id
 POST /check-ins/:id/reopen
+PATCH /check-ins/:id/reopen
+PATCH /tracking-records/:id
+DELETE /tracking-records/:id
+DELETE /check-ins/:id
 GET /dashboard/admin
 GET /dashboard/professional
 GET /dashboard/athlete

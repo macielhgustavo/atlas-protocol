@@ -375,13 +375,30 @@ Filtros temporais padrão:
 
 Registro pode ser:
 
-- criado manualmente pelo profissional vinculado;
-- criado pelo atleta quando o tipo permitir;
-- associado opcionalmente a protocolo ativo.
+- criado pelo profissional `approved` com vínculo `active`;
+- criado pelo atleta somente para si, com `type=manual`,
+  `protocolId=null` e `professionalId=null`;
+- associado opcionalmente a protocolo ativo quando criado pelo profissional.
+
+Na criação pelo atleta, `athleteId` e `createdBy` são derivados do usuário
+autenticado. O atleta não informa `athleteId`, `professionalId` ou
+`protocolId` e não pode criar registro com `type=scheduled`.
+
+Na criação pelo profissional, `professionalId` e `createdBy` são derivados
+do usuário autenticado. O `athleteId` informado precisa pertencer a atleta
+com vínculo `active`.
 
 ### DR-026 — Protocolo vinculado
 
-Não permitir criar novo tracking vinculado a protocolo `closed` ou `cancelled`.
+Tracking vinculado a protocolo só pode ser criado quando o protocolo está
+`active`.
+
+Não permitir criar novo tracking vinculado a protocolo `draft`, `paused`,
+`closed` ou `cancelled`.
+
+O protocolo deve pertencer ao atleta informado e
+`TrackingRecord.professionalId` deve coincidir com
+`Protocol.professionalId`.
 
 Quando associado a protocolo, preservar referências necessárias para contexto histórico.
 
@@ -397,19 +414,50 @@ scheduled -> cancelled
 
 Estados finais não retornam a `scheduled` na V1.
 
+As transições devem ser atômicas ou usar mecanismo equivalente para que
+somente uma requisição concorrente vença e gere auditoria.
+
+Permissões do atleta:
+
+- pode concluir tracking próprio;
+- pode cancelar apenas tracking próprio, `manual` e criado por ele;
+- nunca pode marcar tracking como `missed`.
+
+Profissional só altera tracking quando está `approved` e mantém vínculo
+`active` com o atleta.
+
+Transições para `missed` ou `cancelled` exigem `reason` com trim, entre 1 e
+500 caracteres. O motivo é persistido em `statusReason`.
+
 ### DR-028 — Conclusão
 
 Ao concluir:
 
 - registrar `completedAt`;
 - registrar `completedBy`;
+- manter `statusReason=null`;
 - manter coerência entre status e campos de conclusão.
+
+Ao marcar `missed` ou `cancelled`:
+
+- manter `completedAt=null`;
+- manter `completedBy=null`;
+- persistir o motivo em `statusReason`.
 
 ### DR-029 — Histórico
 
 Registro concluído, perdido ou cancelado não é excluído fisicamente.
 
-Correções excepcionais devem ser auditadas.
+Correções excepcionais alteram somente `notes`, preservam o estado final e
+devem ser auditadas com motivo obrigatório de 1 a 500 caracteres.
+
+Admin pode corrigir qualquer tracking finalizado.
+
+Profissional pode corrigir somente quando está `approved`, é o
+`professionalId` responsável pelo tracking e mantém vínculo `active` com o
+atleta. Tracking com `professionalId=null` só pode ser corrigido por admin.
+
+Atleta não corrige tracking finalizado.
 
 ## 7. Check-ins
 
@@ -425,13 +473,38 @@ Só pode existir um check-in do mesmo atleta para a mesma `referenceWeek`.
 
 A semana começa na segunda-feira, considerando `America/Sao_Paulo` para normalização funcional.
 
+Uma entrada ISO contendo somente `YYYY-MM-DD` é interpretada como data civil
+nesse timezone. Uma entrada com horário e offset é interpretada como instante
+antes da normalização.
+
 ### DR-031 — Protocolo opcional
 
 Check-in pode referenciar `protocolId` opcional para manter contexto.
 
+Quando informado, o protocolo deve:
+
+- pertencer ao atleta autenticado;
+- estar `active`;
+- determinar o `professionalId` responsável;
+- possuir vínculo `active` entre profissional e atleta.
+
+Protocolos `draft`, `paused`, `closed` ou `cancelled` não recebem novos
+check-ins. Check-in já criado permanece histórico quando o protocolo muda de
+estado posteriormente.
+
+Sem protocolo:
+
+- nenhum vínculo `active`: falhar com `ATHLETE_LINK_REQUIRED`;
+- um vínculo `active`: derivar o profissional;
+- múltiplos vínculos `active`: exigir `professionalId` e validar o vínculo,
+  sem selecionar profissional silenciosamente.
+
 ### DR-032 — Rascunho
 
 Enquanto `pending`, o atleta pode editar respostas permitidas.
+
+Na edição comum, somente `responses` pode ser alterado. O objeto enviado
+substitui integralmente o valor anterior, sem merge implícito.
 
 ### DR-033 — Envio
 
@@ -444,9 +517,12 @@ Ao enviar:
 - registrar `submittedAt`;
 - respostas ficam imutáveis para o atleta.
 
+O contrato de `responses` deve ser validado novamente antes do envio.
+
 ### DR-034 — Revisão
 
-Somente profissional `approved` com vínculo `active` pode revisar.
+Somente o profissional responsável, `approved` e com vínculo `active`, pode
+revisar.
 
 `submitted -> reviewed`.
 
@@ -455,6 +531,9 @@ Registrar:
 - `reviewedAt`;
 - `reviewedBy`;
 - `reviewComment`.
+
+`reviewComment` é obrigatório, recebe trim e possui entre 1 e 2000
+caracteres.
 
 ### DR-035 — Sem reabertura na V1
 
@@ -469,6 +548,21 @@ Pode armazenar dados de acompanhamento definidos pelo produto, desde que:
 - não gerem diagnóstico automático;
 - não gerem prescrição;
 - não gerem recomendação automática.
+
+`responses` é um objeto JSON simples e flexível com:
+
+- entre 1 e 20 propriedades;
+- tamanho serializado máximo de 16 KB;
+- chaves de 1 a 50 caracteres, sem `.`, null byte, prefixo `$` ou os nomes
+  `__proto__`, `constructor` e `prototype`;
+- sem objetos aninhados, funções, buffers ou tipos especiais;
+- valores `string`, número finito, boolean, `null` ou array de até 20 valores
+  escalares;
+- strings de até 1000 caracteres;
+- sem arrays aninhados ou objetos dentro de arrays.
+
+O mesmo contrato é aplicado na criação, edição e antes do envio. O campo
+histórico `answers` não é aceito.
 
 ## 8. Exames
 

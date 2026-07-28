@@ -316,13 +316,14 @@ Collection: `tracking_records`
 ```js
 {
   athleteId: ObjectId,
-  professionalId: ObjectId,
+  professionalId: ObjectId | null,
   protocolId: ObjectId | null,
   protocolVersion: Number | null,
   type: "scheduled" | "manual",
   title: String,
   scheduledFor: Date,
   status: "scheduled" | "completed" | "missed" | "cancelled",
+  statusReason: String | null,
   completedAt: Date | null,
   completedBy: ObjectId | null,
   notes: String | null,
@@ -335,9 +336,21 @@ Collection: `tracking_records`
 Regras:
 
 - `scheduledFor` é o único nome de campo temporal de agendamento;
-- protocolo opcional deve estar em estado permitido;
+- `professionalId` é obrigatório quando o registro é criado por profissional e
+  nulo quando o atleta cria seu tracking manual;
+- tracking vinculado a protocolo exige protocolo `active`, profissional
+  `approved`, vínculo `active` e coincidência com
+  `Protocol.professionalId`;
+- tracking do atleta é próprio, `manual`, sem protocolo e com
+  `professionalId=null`;
+- `createdBy` é sempre derivado do usuário autenticado;
+- `statusReason` é nulo em `scheduled` e `completed`;
+- `statusReason` recebe o motivo de 1 a 500 caracteres em `missed` e
+  `cancelled`;
 - status final não retorna a `scheduled` na V1;
-- `completedAt` e `completedBy` coerentes com `completed`.
+- `completedAt` e `completedBy` são preenchidos somente em `completed`;
+- correção auditada altera somente `notes`;
+- não existe `protocolItemId`.
 
 Índices:
 
@@ -372,7 +385,20 @@ Regras:
 
 - `referenceWeek` normalizada para segunda-feira;
 - um check-in por atleta/semana;
+- `professionalId` é derivado do protocolo `active`, de um único vínculo
+  `active` ou validado entre múltiplos vínculos ativos;
+- `responses` é objeto JSON simples com 1 a 20 propriedades e tamanho
+  serializado máximo de 16 KB;
+- chaves de `responses` possuem entre 1 e 50 caracteres, não contêm `.`, null
+  byte, prefixo `$` e não usam `__proto__`, `constructor` ou `prototype`;
+- valores de `responses` são escalares ou arrays de até 20 escalares; strings
+  possuem no máximo 1000 caracteres, números são finitos e não existem
+  objetos ou arrays aninhados;
 - respostas editáveis apenas enquanto `pending`;
+- `submittedAt` é preenchido somente a partir de `submitted`;
+- `reviewedAt`, `reviewedBy` e `reviewComment` são preenchidos em `reviewed`;
+- `reviewComment` possui entre 1 e 2000 caracteres após trim;
+- usa `responses`, nunca `answers`;
 - sem `reopenedAt` na V1;
 - `submitted -> reviewed`, sem retorno a `pending`.
 

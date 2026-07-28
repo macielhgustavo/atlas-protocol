@@ -101,31 +101,58 @@ Admin pode consultar apenas quando necessário para suporte/auditoria, sem edita
 
 | Ação | Admin | Profissional | Atleta |
 |---|---:|---:|---:|
-| Listar | C | V | P |
-| Ver | C | V | P |
+| Listar | T | V | P |
+| Ver | T | V | P |
 | Criar manualmente | N | V | C |
 | Marcar `completed` | N | V | P |
-| Marcar `missed` | N | V | C |
+| Marcar `missed` | N | V | N |
 | Marcar `cancelled` | N | V | C |
-| Corrigir registro finalizado | C | C | N |
+| Corrigir registro finalizado | T | C | N |
 | Excluir fisicamente | N | N | N |
 
-Correção de registro finalizado exige auditoria.
+Condições:
+
+- admin pode listar e consultar todos os registros para suporte, auditoria e
+  demonstração, mas não cria nem executa mudança normal de status;
+- atleta cria somente tracking próprio `manual`, sem protocolo e sem
+  profissional associado;
+- atleta conclui tracking próprio;
+- atleta cancela somente tracking próprio `manual`, criado por ele, com motivo
+  obrigatório;
+- profissional precisa estar `approved` e possuir vínculo `active` com o
+  atleta para listar, consultar, criar ou alterar status;
+- profissional corrige somente tracking finalizado no qual é o
+  `professionalId` responsável e enquanto o vínculo permanece `active`;
+- admin corrige qualquer tracking finalizado;
+- correção exige motivo e gera auditoria;
+- tracking com `professionalId=null` não pode ser corrigido por profissional.
 
 ## 8. Check-ins
 
 | Ação | Admin | Profissional | Atleta |
 |---|---:|---:|---:|
-| Listar | C | V | P |
-| Ver | C | V | P |
+| Listar | T | V | P |
+| Ver | T | V | P |
 | Criar `pending` | N | N | P |
 | Editar enquanto `pending` | N | N | P |
 | Enviar | N | N | P |
-| Revisar `submitted` | N | V | N |
+| Revisar `submitted` | N | C | N |
 | Reabrir | N | N | N |
 | Excluir fisicamente | N | N | N |
 
-Após `submitted`, respostas do atleta são imutáveis na V1.
+Condições:
+
+- admin pode listar e consultar check-ins completos para suporte, auditoria e
+  demonstração, mas não cria, edita, envia ou revisa;
+- atleta cria, edita e envia somente check-in próprio;
+- após `submitted`, respostas do atleta são imutáveis na V1;
+- profissional precisa estar `approved` e manter vínculo `active` com o atleta
+  para listar e consultar;
+- para revisar, o profissional também precisa ser o `professionalId`
+  responsável pelo check-in;
+- profissional diferente do responsável não revisa, mesmo que também possua
+  vínculo com o atleta;
+- `reviewed` é final e não existe reabertura administrativa ou profissional.
 
 ## 9. Exames
 
