@@ -21,7 +21,7 @@ Frontend separado em Angular.
 
 - Node.js 20 ou superior
 - npm
-- MongoDB local ou MongoDB Atlas
+- MongoDB local ou MongoDB Atlas 6.0 ou superior, com FCV 6.0 ou superior
 
 ## Instalação
 

@@ -3,6 +3,7 @@
 ## 1. Convenções gerais
 
 - Banco: MongoDB.
+- Versão mínima: MongoDB 6.0 com FCV 6.0 ou superior.
 - ODM: Mongoose.
 - IDs: `ObjectId`.
 - Timestamps: `createdAt` e `updatedAt` quando aplicável.
@@ -103,7 +104,6 @@ Collection: `professional_athlete_links`
   rejectedAt: Date | null,
   endedAt: Date | null,
   endedBy: ObjectId | null,
-  endReason: String | null,
   createdAt: Date,
   updatedAt: Date
 }
@@ -115,17 +115,35 @@ Validações:
 - atleta deve ter role `athlete`;
 - usuário não pode vincular-se a si mesmo;
 - somente atleta destinatário aceita/rejeita;
-- `endedAt` obrigatório quando status `ended`.
+- `endedAt` obrigatório quando status `ended`;
+- motivos opcionais de rejeição e encerramento não integram este model e são
+  registrados somente em `AuditLog.metadata`.
 
 Índices:
 
 ```js
+ProfessionalAthleteLinkSchema.index(
+  { professionalId: 1, athleteId: 1 },
+  {
+    unique: true,
+    name: "unique_open_professional_athlete_link",
+    partialFilterExpression: {
+      status: { $in: ["pending", "active"] }
+    }
+  }
+)
 { professionalId: 1, athleteId: 1, status: 1 }
 { athleteId: 1, status: 1 }
 { professionalId: 1, status: 1 }
 ```
 
-Regra lógica: não pode haver mais de um vínculo `pending` ou `active` para o mesmo par.
+O índice único parcial exige MongoDB/FCV 6.0 ou superior. A unicidade também é
+validada preventivamente no service, e conflitos concorrentes de chave duplicada
+devem ser tratados pela aplicação.
+
+Regra lógica: não pode haver mais de um vínculo `pending` ou `active` para o
+mesmo par. Vínculos `rejected` e `ended` ficam fora do índice parcial e permitem
+uma nova solicitação em outro documento.
 
 ## 5. Substance
 

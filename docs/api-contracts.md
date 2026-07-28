@@ -128,6 +128,7 @@ A V1 não usa `DELETE` físico em dados de negócio.
 
 - `ACTIVE_LINK_ALREADY_EXISTS`
 - `PENDING_LINK_ALREADY_EXISTS`
+- `ATHLETE_NOT_AVAILABLE_FOR_LINK`
 - `ATHLETE_LINK_REQUIRED`
 - `LINK_NOT_PENDING`
 - `LINK_NOT_ACTIVE`
@@ -387,7 +388,11 @@ Resultado:
 
 Profissional `approved` solicita vínculo.
 
-Request preferencial:
+`professionalId` é obtido exclusivamente do usuário autenticado. O atleta é
+localizado somente pelo e-mail exato, normalizado pelo backend; não existe busca
+ampla de atletas neste fluxo.
+
+Request:
 
 ```json
 {
@@ -412,10 +417,14 @@ Response `201`:
 
 Erros:
 
-- `RESOURCE_NOT_FOUND`
+- `ATHLETE_NOT_AVAILABLE_FOR_LINK`
 - `PENDING_LINK_ALREADY_EXISTS`
 - `ACTIVE_LINK_ALREADY_EXISTS`
 - `PROFESSIONAL_PENDING_APPROVAL`
+
+E-mail inexistente, usuário não atleta, usuário inativo, bloqueado ou
+indisponível retorna o mesmo erro genérico
+`ATHLETE_NOT_AVAILABLE_FOR_LINK`, sem revelar qual condição ocorreu.
 
 ### GET `/links`
 
@@ -429,6 +438,11 @@ Filtros:
 - `professionalId` admin only
 - `athleteId` admin/professional conforme escopo
 - paginação
+- `sortBy=createdAt|requestedAt`
+- `sortOrder=asc|desc`
+
+Ordenação padrão: `sortBy=createdAt&sortOrder=desc`. Outros valores de `sortBy`
+são rejeitados.
 
 ### GET `/links/:id`
 
@@ -454,9 +468,16 @@ Payload opcional:
 }
 ```
 
+Quando informado, `reason` é validado, normalizado e registrado somente em
+`AuditLog.metadata` no evento `LINK_REJECTED`. O motivo não integra o vínculo
+nem é exposto desnecessariamente na resposta.
+
 ### PATCH `/links/:id/end`
 
 Profissional do vínculo, atleta do vínculo ou admin quando justificado.
+
+Para admin, `reason` é obrigatório. Para profissional ou atleta participantes,
+é opcional.
 
 ```json
 {
@@ -465,6 +486,9 @@ Profissional do vínculo, atleta do vínculo ou admin quando justificado.
 ```
 
 `active -> ended`.
+
+Quando informado, `reason` é validado, normalizado e registrado somente em
+`AuditLog.metadata` no evento `LINK_ENDED`. O motivo não integra o vínculo.
 
 Não existe delete nem reativação do mesmo registro.
 

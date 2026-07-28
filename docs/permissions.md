@@ -58,6 +58,11 @@ Condições:
 
 - profissional solicitante deve estar `approved`;
 - atleta só aceita/rejeita solicitação destinada a ele;
+- admin só encerra vínculo ativo quando informa motivo;
+- profissional ou atleta participante pode encerrar vínculo ativo com motivo
+  opcional;
+- motivos de rejeição e encerramento são registrados somente em metadata segura
+  da auditoria;
 - dados do atleta só ficam acessíveis ao profissional após `active`.
 
 ## 5. Biblioteca de substâncias/itens

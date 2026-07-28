@@ -108,12 +108,17 @@ Um profissional só pode acessar dados de acompanhamento de um atleta quando:
 
 Somente profissional `approved` pode solicitar vínculo.
 
-A solicitação pode localizar o atleta por e-mail ou identificador resolvido no backend.
+A solicitação localiza o atleta exclusivamente pelo e-mail exato informado. O
+backend normaliza o e-mail e obtém `professionalId` somente do usuário
+autenticado, sem oferecer busca ampla de atletas.
 
 Ao criar solicitação:
 
 - status inicial = `pending`;
+- usuário inexistente, não atleta, inativo, bloqueado ou indisponível produz o
+  mesmo erro genérico `ATHLETE_NOT_AVAILABLE_FOR_LINK`;
 - o atleta recebe notificação interna;
+- gerar exatamente uma ocorrência de auditoria `LINK_REQUESTED`;
 - não há acesso aos dados do atleta enquanto estiver `pending`.
 
 ### DR-007 — Aceite do atleta
@@ -124,7 +129,7 @@ Ao aceitar:
 
 - status = `active`;
 - registrar `acceptedAt`;
-- gerar auditoria;
+- gerar exatamente uma ocorrência de auditoria `LINK_ACCEPTED`;
 - gerar notificação para o profissional.
 
 ### DR-008 — Rejeição do atleta
@@ -135,6 +140,10 @@ Ao rejeitar:
 
 - status = `rejected`;
 - registrar `rejectedAt`;
+- gerar exatamente uma ocorrência de auditoria `LINK_REJECTED`;
+- o motivo opcional, quando informado, é normalizado e registrado somente em
+  `AuditLog.metadata` no evento `LINK_REJECTED`;
+- o motivo não é persistido no vínculo nem exposto desnecessariamente;
 - não liberar acesso ao profissional;
 - preservar o registro da solicitação.
 
@@ -146,8 +155,13 @@ Encerramento:
 
 - impede novos acessos e alterações do profissional;
 - não apaga histórico criado durante o vínculo;
-- registra `endedAt` e motivo opcional;
-- gera auditoria e notificações.
+- registra `endedAt`;
+- exige motivo quando realizado por admin e mantém o motivo opcional para
+  profissional ou atleta participantes;
+- gerar exatamente uma ocorrência de auditoria `LINK_ENDED`;
+- o motivo é normalizado e registrado somente em `AuditLog.metadata` no evento
+  `LINK_ENDED`, sem ser persistido no vínculo;
+- gera notificações.
 
 ### DR-010 — Unicidade lógica
 

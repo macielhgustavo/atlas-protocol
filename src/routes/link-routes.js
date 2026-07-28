@@ -9,9 +9,11 @@ const validate = require('../middlewares/validation-middleware');
 const asyncHandler = require('../utils/async-handler');
 const {
   createLinkSchema,
+  emptyLinkActionSchema,
   endLinkSchema,
   linkIdParamsSchema,
   linkListQuerySchema,
+  rejectLinkSchema,
 } = require('../validators/link-validators');
 
 const router = express.Router();
@@ -21,7 +23,7 @@ router.use(authMiddleware);
 
 router.post(
   '/',
-  allowRoles(USER_ROLES.ADMIN),
+  allowRoles(USER_ROLES.PROFESSIONAL),
   professionalApprovalMiddleware,
   validate(createLinkSchema),
   asyncHandler(linkController.createLink),
@@ -39,6 +41,20 @@ router.get(
   professionalApprovalMiddleware,
   validate(linkIdParamsSchema, 'params'),
   asyncHandler(linkController.getLink),
+);
+router.patch(
+  '/:id/accept',
+  allowRoles(USER_ROLES.ATHLETE),
+  validate(linkIdParamsSchema, 'params'),
+  validate(emptyLinkActionSchema),
+  asyncHandler(linkController.acceptLink),
+);
+router.patch(
+  '/:id/reject',
+  allowRoles(USER_ROLES.ATHLETE),
+  validate(linkIdParamsSchema, 'params'),
+  validate(rejectLinkSchema),
+  asyncHandler(linkController.rejectLink),
 );
 router.patch(
   '/:id/end',

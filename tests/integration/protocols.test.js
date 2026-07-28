@@ -60,18 +60,26 @@ async function createSubstance(admin, overrides = {}) {
 }
 
 async function createActiveLink(professional, athlete) {
+  const now = new Date();
   return ProfessionalAthleteLink.create({
     professionalId: professional.id,
     athleteId: athlete.id,
     status: 'active',
-    startedAt: new Date(),
+    requestedAt: now,
+    acceptedAt: now,
   });
 }
 
 async function endLink(link) {
   await ProfessionalAthleteLink.updateOne(
     { _id: link.id },
-    { $set: { status: 'ended', endedAt: new Date() } },
+    {
+      $set: {
+        status: 'ended',
+        endedAt: new Date(),
+        endedBy: link.professionalId,
+      },
+    },
   );
 }
 
@@ -152,7 +160,12 @@ describe('protocolos e versionamento', () => {
     passwordHash = await bcrypt.hash('SenhaForte123!', 10);
     mongoServer = await MongoMemoryServer.create();
     await mongoose.connect(mongoServer.getUri());
-    await Promise.all([Protocol.init(), ProtocolVersion.init(), Substance.init()]);
+    await Promise.all([
+      ProfessionalAthleteLink.init(),
+      Protocol.init(),
+      ProtocolVersion.init(),
+      Substance.init(),
+    ]);
   }, 120000);
 
   afterEach(async () => {
@@ -277,6 +290,46 @@ describe('protocolos e versionamento', () => {
       expect(await ProtocolVersion.countDocuments()).toBe(0);
       expect(await AuditLog.countDocuments()).toBe(0);
     });
+
+    it.each(['pending', 'rejected', 'ended'])(
+      'não reconhece vínculo %s como vínculo ativo',
+      async (status) => {
+        const admin = await createUser('admin');
+        const professional = await createUser('professional');
+        const athlete = await createUser('athlete');
+        const substance = await createSubstance(admin);
+        const now = new Date();
+        const transitionFields = {
+          pending: {},
+          rejected: { rejectedAt: now },
+          ended: {
+            acceptedAt: now,
+            endedAt: now,
+            endedBy: professional.id,
+          },
+        };
+
+        await ProfessionalAthleteLink.create({
+          professionalId: professional.id,
+          athleteId: athlete.id,
+          status,
+          requestedAt: now,
+          ...transitionFields[status],
+        });
+
+        const response = await createProtocolThroughApi(
+          professional,
+          athlete,
+          substance,
+        );
+
+        expect(response.status).toBe(403);
+        expect(response.body.error.code).toBe('ATHLETE_LINK_REQUIRED');
+        expect(await Protocol.countDocuments()).toBe(0);
+        expect(await ProtocolVersion.countDocuments()).toBe(0);
+        expect(await AuditLog.countDocuments()).toBe(0);
+      },
+    );
 
     it.each(['admin', 'athlete'])(
       'impede criação pelo perfil %s',

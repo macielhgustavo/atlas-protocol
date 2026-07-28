@@ -5,8 +5,8 @@ async function createLink(request, response) {
 
   return response.status(201).json({
     success: true,
-    data: { link },
-    message: 'Vínculo criado com sucesso.',
+    data: link,
+    message: 'Solicitação de vínculo criada com sucesso.',
   });
 }
 
@@ -28,19 +28,54 @@ async function getLink(request, response) {
 
   return response.status(200).json({
     success: true,
-    data: { link },
+    data: link,
     message: 'Vínculo obtido com sucesso.',
   });
 }
 
-async function endLink(request, response) {
-  const link = await linkService.endLink(request.user, request.params.id);
+async function acceptLink(request, response) {
+  const link = await linkService.acceptLink(request.user, request.params.id);
 
   return response.status(200).json({
     success: true,
-    data: { link },
+    data: link,
+    message: 'Vínculo aceito com sucesso.',
+  });
+}
+
+async function rejectLink(request, response) {
+  const link = await linkService.rejectLink(
+    request.user,
+    request.params.id,
+    request.body,
+  );
+
+  return response.status(200).json({
+    success: true,
+    data: link,
+    message: 'Solicitação de vínculo rejeitada com sucesso.',
+  });
+}
+
+async function endLink(request, response) {
+  const link = await linkService.endLink(
+    request.user,
+    request.params.id,
+    request.body,
+  );
+
+  return response.status(200).json({
+    success: true,
+    data: link,
     message: 'Vínculo encerrado com sucesso.',
   });
 }
 
-module.exports = { createLink, endLink, getLink, listLinks };
+module.exports = {
+  acceptLink,
+  createLink,
+  endLink,
+  getLink,
+  listLinks,
+  rejectLink,
+};

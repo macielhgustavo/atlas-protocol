@@ -1,3 +1,5 @@
+const AUDIT_ACTIONS = require('../constants/audit-actions');
+const AUDIT_ENTITY_TYPES = require('../constants/audit-entity-types');
 const ERROR_CODES = require('../constants/error-codes');
 const LINK_STATUSES = require('../constants/link-statuses');
 const USER_ROLES = require('../constants/user-roles');
@@ -5,16 +7,37 @@ const ProfessionalAthleteLink = require('../models/professional-athlete-link');
 const User = require('../models/user');
 const AppError = require('../utils/app-error');
 const toLinkResponse = require('../utils/link-response');
+const auditService = require('./audit-service');
 
-function resourceNotFoundError(resource = 'Vínculo') {
+const OPEN_LINK_STATUSES = [LINK_STATUSES.PENDING, LINK_STATUSES.ACTIVE];
+const MAX_CREATE_ATTEMPTS = 2;
+
+function resourceNotFoundError() {
   return new AppError(
     404,
     ERROR_CODES.RESOURCE_NOT_FOUND,
-    `${resource} não encontrado.`,
+    'Vínculo não encontrado.',
   );
 }
 
-function invalidProfileError(field, message) {
+function athleteNotAvailableError() {
+  return new AppError(
+    404,
+    ERROR_CODES.ATHLETE_NOT_AVAILABLE_FOR_LINK,
+    'Atleta não disponível para vínculo.',
+  );
+}
+
+function forbiddenFilterError(field) {
+  return new AppError(
+    403,
+    ERROR_CODES.FORBIDDEN,
+    'Você não possui permissão para utilizar este filtro.',
+    [{ field, message: 'Este filtro não está disponível para o seu perfil.' }],
+  );
+}
+
+function validationError(field, message) {
   return new AppError(
     400,
     ERROR_CODES.VALIDATION_ERROR,
@@ -23,78 +46,173 @@ function invalidProfileError(field, message) {
   );
 }
 
-function duplicateActiveLinkError() {
+function duplicateLinkError(status) {
+  if (status === LINK_STATUSES.PENDING) {
+    return new AppError(
+      409,
+      ERROR_CODES.PENDING_LINK_ALREADY_EXISTS,
+      'Já existe uma solicitação de vínculo pendente para este atleta.',
+    );
+  }
+
+  if (status === LINK_STATUSES.ACTIVE) {
+    return new AppError(
+      409,
+      ERROR_CODES.ACTIVE_LINK_ALREADY_EXISTS,
+      'Já existe um vínculo ativo entre o profissional e o atleta.',
+    );
+  }
+
   return new AppError(
     409,
-    ERROR_CODES.ACTIVE_LINK_ALREADY_EXISTS,
-    'Já existe um vínculo ativo entre o profissional e o atleta.',
+    ERROR_CODES.DUPLICATE_RESOURCE,
+    'Conflito ao criar a solicitação de vínculo.',
   );
+}
+
+function linkNotPendingError() {
+  return new AppError(
+    422,
+    ERROR_CODES.LINK_NOT_PENDING,
+    'A solicitação de vínculo não está pendente.',
+  );
+}
+
+function linkNotActiveError() {
+  return new AppError(
+    422,
+    ERROR_CODES.LINK_NOT_ACTIVE,
+    'O vínculo não está ativo.',
+  );
+}
+
+function normalizeReason(reason) {
+  if (reason === undefined || reason === null) return null;
+  const normalized = reason.trim();
+  return normalized || null;
+}
+
+function transitionMetadata(from, to, reason = null) {
+  const metadata = { from, to };
+  if (reason !== null) metadata.reason = reason;
+  return metadata;
 }
 
 function hasLinkAccess(requester, link) {
-  return (
-    requester.role === USER_ROLES.ADMIN ||
-    link.professionalId.toString() === requester.id ||
-    link.athleteId.toString() === requester.id
-  );
+  if (requester.role === USER_ROLES.ADMIN) return true;
+  if (requester.role === USER_ROLES.PROFESSIONAL) {
+    return link.professionalId.toString() === requester.id;
+  }
+  if (requester.role === USER_ROLES.ATHLETE) {
+    return link.athleteId.toString() === requester.id;
+  }
+  return false;
 }
 
-async function createLink(requester, { professionalId, athleteId }) {
-  if (professionalId === athleteId) {
-    throw invalidProfileError(
-      'athleteId',
-      'O profissional e o atleta devem ser usuários diferentes.',
-    );
+function scopedLinkFilter(requester, linkId) {
+  const filters = { _id: linkId };
+  if (requester.role === USER_ROLES.PROFESSIONAL) {
+    filters.professionalId = requester.id;
+  } else if (requester.role === USER_ROLES.ATHLETE) {
+    filters.athleteId = requester.id;
   }
+  return filters;
+}
 
-  const [professional, athlete] = await Promise.all([
-    User.findById(professionalId),
-    User.findById(athleteId),
-  ]);
-
-  if (!professional) throw resourceNotFoundError('Profissional');
-  if (!athlete) throw resourceNotFoundError('Atleta');
-
-  if (professional.role !== USER_ROLES.PROFESSIONAL) {
-    throw invalidProfileError(
-      'professionalId',
-      'O usuário informado deve possuir o perfil professional.',
-    );
-  }
-  if (athlete.role !== USER_ROLES.ATHLETE) {
-    throw invalidProfileError(
-      'athleteId',
-      'O usuário informado deve possuir o perfil athlete.',
-    );
-  }
-
-  const existingLink = await ProfessionalAthleteLink.exists({
+async function findOpenLink(professionalId, athleteId) {
+  return ProfessionalAthleteLink.findOne({
     professionalId,
     athleteId,
-    status: LINK_STATUSES.ACTIVE,
-  });
-  if (existingLink) throw duplicateActiveLinkError();
+    status: { $in: OPEN_LINK_STATUSES },
+  }).select('status');
+}
 
-  try {
-    const link = await ProfessionalAthleteLink.create({
-      professionalId,
-      athleteId,
-      status: LINK_STATUSES.ACTIVE,
-      invitedBy: requester.id,
-      startedAt: new Date(),
-    });
-    return toLinkResponse(link);
-  } catch (error) {
-    if (error.code === 11000) throw duplicateActiveLinkError();
-    throw error;
+async function assertNoOpenLink(professionalId, athleteId) {
+  const existingLink = await findOpenLink(professionalId, athleteId);
+  if (existingLink) throw duplicateLinkError(existingLink.status);
+}
+
+async function recordLinkAudit(requester, action, link, metadata) {
+  await auditService.record({
+    actorId: requester.id,
+    action,
+    entityType: AUDIT_ENTITY_TYPES.PROFESSIONAL_ATHLETE_LINK,
+    entityId: link.id,
+    metadata,
+  });
+}
+
+async function createPendingLink(professionalId, athleteId) {
+  await ProfessionalAthleteLink.init();
+
+  for (let attempt = 0; attempt < MAX_CREATE_ATTEMPTS; attempt += 1) {
+    await assertNoOpenLink(professionalId, athleteId);
+
+    try {
+      return await ProfessionalAthleteLink.create({
+        professionalId,
+        athleteId,
+        status: LINK_STATUSES.PENDING,
+        requestedAt: new Date(),
+      });
+    } catch (error) {
+      if (error.code !== 11000) throw error;
+
+      const concurrentLink = await findOpenLink(professionalId, athleteId);
+      if (concurrentLink) throw duplicateLinkError(concurrentLink.status);
+      if (attempt === MAX_CREATE_ATTEMPTS - 1) {
+        throw duplicateLinkError();
+      }
+    }
+  }
+
+  throw duplicateLinkError();
+}
+
+async function createLink(requester, { athleteEmail }) {
+  const normalizedEmail = athleteEmail.trim().toLowerCase();
+  const athlete = await User.findOne({
+    email: normalizedEmail,
+    role: USER_ROLES.ATHLETE,
+    active: true,
+    blockedAt: null,
+  }).select('_id');
+
+  if (!athlete) throw athleteNotAvailableError();
+
+  const link = await createPendingLink(requester.id, athlete.id);
+
+  await recordLinkAudit(
+    requester,
+    AUDIT_ACTIONS.LINK_REQUESTED,
+    link,
+    transitionMetadata(null, LINK_STATUSES.PENDING),
+  );
+
+  return toLinkResponse(link);
+}
+
+function assertListFilterPermissions(requester, query) {
+  if (
+    requester.role !== USER_ROLES.ADMIN &&
+    query.professionalId !== undefined
+  ) {
+    throw forbiddenFilterError('professionalId');
+  }
+
+  if (
+    requester.role === USER_ROLES.ATHLETE &&
+    query.athleteId !== undefined
+  ) {
+    throw forbiddenFilterError('athleteId');
   }
 }
 
 async function listLinks(requester, query) {
-  const { page, limit, status } = query;
-  const filters = {};
+  assertListFilterPermissions(requester, query);
 
-  if (status) filters.status = status;
+  const filters = {};
+  if (query.status) filters.status = query.status;
   if (query.professionalId) filters.professionalId = query.professionalId;
   if (query.athleteId) filters.athleteId = query.athleteId;
 
@@ -104,22 +222,24 @@ async function listLinks(requester, query) {
     filters.athleteId = requester.id;
   }
 
-  const skip = (page - 1) * limit;
+  const skip = (query.page - 1) * query.limit;
+  const direction = query.sortOrder === 'asc' ? 1 : -1;
+  const sort = { [query.sortBy]: direction, _id: direction };
   const [links, total] = await Promise.all([
     ProfessionalAthleteLink.find(filters)
-      .sort({ createdAt: -1 })
+      .sort(sort)
       .skip(skip)
-      .limit(limit),
+      .limit(query.limit),
     ProfessionalAthleteLink.countDocuments(filters),
   ]);
 
   return {
     links: links.map(toLinkResponse),
     meta: {
-      page,
-      limit,
+      page: query.page,
+      limit: query.limit,
       total,
-      totalPages: Math.ceil(total / limit),
+      totalPages: Math.ceil(total / query.limit),
     },
   };
 }
@@ -134,34 +254,119 @@ async function getLinkById(requester, linkId) {
   return toLinkResponse(link);
 }
 
-async function endLink(requester, linkId) {
-  const link = await ProfessionalAthleteLink.findById(linkId);
+async function acceptLink(requester, linkId) {
+  const ownershipFilter = { _id: linkId, athleteId: requester.id };
+  const link = await ProfessionalAthleteLink.findOne(ownershipFilter);
+  if (!link) throw resourceNotFoundError();
+  if (link.status !== LINK_STATUSES.PENDING) throw linkNotPendingError();
 
-  if (!link || !hasLinkAccess(requester, link)) {
-    throw resourceNotFoundError();
-  }
+  const acceptedAt = new Date();
+  const updatedLink = await ProfessionalAthleteLink.findOneAndUpdate(
+    { ...ownershipFilter, status: LINK_STATUSES.PENDING },
+    {
+      $set: {
+        status: LINK_STATUSES.ACTIVE,
+        acceptedAt,
+      },
+    },
+    { new: true, runValidators: true },
+  );
 
-  if (link.status === LINK_STATUSES.ENDED) {
-    throw new AppError(
-      422,
-      ERROR_CODES.INVALID_STATE_TRANSITION,
-      'O vínculo já está encerrado.',
-    );
-  }
+  if (!updatedLink) throw linkNotPendingError();
 
-  if (link.status !== LINK_STATUSES.ACTIVE) {
-    throw new AppError(
-      422,
-      ERROR_CODES.INVALID_STATE_TRANSITION,
-      'Apenas vínculos ativos podem ser encerrados.',
-    );
-  }
+  await recordLinkAudit(
+    requester,
+    AUDIT_ACTIONS.LINK_ACCEPTED,
+    updatedLink,
+    transitionMetadata(LINK_STATUSES.PENDING, LINK_STATUSES.ACTIVE),
+  );
 
-  link.status = LINK_STATUSES.ENDED;
-  link.endedAt = new Date();
-  await link.save();
-
-  return toLinkResponse(link);
+  return toLinkResponse(updatedLink);
 }
 
-module.exports = { createLink, endLink, getLinkById, listLinks };
+async function rejectLink(requester, linkId, { reason } = {}) {
+  const ownershipFilter = { _id: linkId, athleteId: requester.id };
+  const link = await ProfessionalAthleteLink.findOne(ownershipFilter);
+  if (!link) throw resourceNotFoundError();
+  if (link.status !== LINK_STATUSES.PENDING) throw linkNotPendingError();
+
+  const rejectedAt = new Date();
+  const updatedLink = await ProfessionalAthleteLink.findOneAndUpdate(
+    { ...ownershipFilter, status: LINK_STATUSES.PENDING },
+    {
+      $set: {
+        status: LINK_STATUSES.REJECTED,
+        rejectedAt,
+      },
+    },
+    { new: true, runValidators: true },
+  );
+
+  if (!updatedLink) throw linkNotPendingError();
+
+  const normalizedReason = normalizeReason(reason);
+  await recordLinkAudit(
+    requester,
+    AUDIT_ACTIONS.LINK_REJECTED,
+    updatedLink,
+    transitionMetadata(
+      LINK_STATUSES.PENDING,
+      LINK_STATUSES.REJECTED,
+      normalizedReason,
+    ),
+  );
+
+  return toLinkResponse(updatedLink);
+}
+
+async function endLink(requester, linkId, { reason } = {}) {
+  const normalizedReason = normalizeReason(reason);
+  if (requester.role === USER_ROLES.ADMIN && normalizedReason === null) {
+    throw validationError(
+      'reason',
+      'Informe o motivo do encerramento administrativo.',
+    );
+  }
+
+  const ownershipFilter = scopedLinkFilter(requester, linkId);
+  const link = await ProfessionalAthleteLink.findOne(ownershipFilter);
+  if (!link) throw resourceNotFoundError();
+  if (link.status !== LINK_STATUSES.ACTIVE) throw linkNotActiveError();
+
+  const endedAt = new Date();
+  const updatedLink = await ProfessionalAthleteLink.findOneAndUpdate(
+    { ...ownershipFilter, status: LINK_STATUSES.ACTIVE },
+    {
+      $set: {
+        status: LINK_STATUSES.ENDED,
+        endedAt,
+        endedBy: requester.id,
+      },
+    },
+    { new: true, runValidators: true },
+  );
+
+  if (!updatedLink) throw linkNotActiveError();
+
+  await recordLinkAudit(
+    requester,
+    AUDIT_ACTIONS.LINK_ENDED,
+    updatedLink,
+    transitionMetadata(
+      LINK_STATUSES.ACTIVE,
+      LINK_STATUSES.ENDED,
+      normalizedReason,
+    ),
+  );
+
+  return toLinkResponse(updatedLink);
+}
+
+module.exports = {
+  acceptLink,
+  createLink,
+  endLink,
+  getLinkById,
+  listLinks,
+  rejectLink,
+};
