@@ -737,6 +737,12 @@ GET /api/v1/dashboard
 
 A resposta varia conforme `req.user.role`.
 
+Não existem dashboards separados por perfil. A V1 não aceita `role`, `userId`,
+`athleteId` ou `professionalId` em query para selecionar outra identidade.
+
+O dashboard é uma projeção autenticada somente de leitura, não possui
+collection própria, não persiste snapshots e não gera auditoria pela consulta.
+
 ### DR-060 — Escopo por perfil
 
 Dashboard respeita ownership, vínculo e aprovação profissional.
@@ -747,7 +753,7 @@ Cards e listas mostram dados operacionais e históricos; não produzem avaliaç�
 
 ### DR-062 — Atleta
 
-Pode incluir:
+Retorna:
 
 - protocolo ativo;
 - próximo acompanhamento;
@@ -756,9 +762,30 @@ Pode incluir:
 - notificações não lidas;
 - alertas simples de estoque.
 
+O protocolo ativo é o protocolo `active` mais recente do próprio atleta,
+ordenado por `activatedAt desc`, `createdAt desc` e `_id desc`.
+
+O próximo acompanhamento é o primeiro tracking próprio com
+`status=scheduled` e `scheduledFor` maior ou igual ao instante da consulta,
+ordenado por `scheduledFor asc`, `createdAt asc` e `_id asc`.
+
+O check-in atual é o registro próprio cuja `referenceWeek` corresponde à
+segunda-feira da semana atual normalizada em `America/Sao_Paulo`.
+
+A atividade recente combina somente Protocol, TrackingRecord e CheckIn do
+próprio atleta, ordena por `occurredAt desc` e `entityId desc` e retorna no
+máximo 10 itens, sem conteúdo clínico completo.
+
+Enquanto Notifications e Inventory não estiverem implementados, os contratos
+reservados retornam `unreadNotifications=0` e `inventoryAlerts=[]`.
+
 ### DR-063 — Profissional
 
-Pode incluir:
+Profissional `pending` ou `rejected` recebe `200` com dashboard limitado,
+incluindo seu `verificationStatus` e valores operacionais neutros. Somente
+profissional `approved` recebe dados profissionais.
+
+Para profissional aprovado, retorna:
 
 - atletas vinculados ativos;
 - protocolos ativos;
@@ -766,15 +793,34 @@ Pode incluir:
 - próximos acompanhamentos;
 - atividade recente.
 
+Todos os dados operacionais consideram somente atletas com vínculo `active`
+atual com o profissional autenticado. `athleteCount` conta atletas distintos;
+`activeProtocols` conta protocolos `active`; `pendingCheckIns` conta check-ins
+`submitted`, isto é, aguardando revisão, e não check-ins com status `pending`.
+
+`upcomingTrackings` contém no máximo 10 trackings futuros `scheduled`, ordenados
+por `scheduledFor asc`, `createdAt asc` e `_id asc`. A atividade recente combina
+Protocol, TrackingRecord e CheckIn do mesmo escopo, ordena por
+`occurredAt desc` e `entityId desc` e retorna no máximo 10 itens.
+
 ### DR-064 — Admin
 
-Pode incluir:
+Retorna:
 
 - usuários por perfil;
 - profissionais pendentes;
 - contas bloqueadas/ativas;
 - vínculos ativos;
 - logs recentes ou contagens administrativas.
+
+Na projeção administrativa, usuário ativo significa `active=true` e
+`blockedAt=null`; usuário bloqueado significa `blockedAt` preenchido. As
+contagens por role consideram todos os usuários persistidos.
+
+`professionalsPending` conta ProfessionalProfile com
+`verificationStatus=pending`; `activeLinks` conta somente vínculos `active`;
+`recentAudit` retorna no máximo 10 eventos ordenados por `createdAt desc` e
+`_id desc`, sem `metadata` ou `ipHash`.
 
 ## 13. Auditoria
 

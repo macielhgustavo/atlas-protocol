@@ -212,7 +212,7 @@ Notificações são geradas pelo sistema.
 
 ## 13. Dashboard
 
-Existe um único endpoint backend: `GET /dashboard`.
+Existe um único endpoint backend: `GET /api/v1/dashboard`.
 
 | Conteúdo retornado | Admin | Profissional | Atleta |
 |---|---:|---:|---:|
@@ -221,6 +221,19 @@ Existe um único endpoint backend: `GET /dashboard`.
 | Visão atleta | N | N | P |
 
 O backend escolhe a resposta pela role autenticada.
+
+Regras:
+
+- a query não seleciona `role`, `userId`, `athleteId` ou `professionalId`;
+- atleta recebe somente Protocol, TrackingRecord e CheckIn próprios;
+- profissional `approved` recebe somente dados de atletas com vínculo
+  `active` atual;
+- profissional `pending` ou `rejected` pode abrir o próprio dashboard, mas
+  recebe `200` com `verificationStatus` e valores operacionais neutros;
+- admin recebe somente agregados e auditoria reduzida;
+- a consulta não altera entidades nem cria AuditLog;
+- não existem `/dashboard/admin`, `/dashboard/professional` ou
+  `/dashboard/athlete`.
 
 ## 14. Auditoria
 

@@ -1451,31 +1451,50 @@ GET /api/v1/dashboard
 
 O backend decide a resposta conforme `req.user.role`.
 
+Não existem `/dashboard/admin`, `/dashboard/professional` ou
+`/dashboard/athlete`. O endpoint não aceita query para selecionar role ou
+identidade. Dashboard é projeção somente de leitura, sem collection, snapshots
+persistidos ou AuditLog de consulta.
+
 ### 21.1 Atleta
 
-- protocolo ativo;
-- próximo tracking;
-- check-in atual;
-- atividade recente;
-- notificações não lidas;
-- alertas relevantes de estoque.
+- protocolo próprio `active` mais recente por `activatedAt desc`,
+  `createdAt desc`, `_id desc`;
+- próximo tracking próprio `scheduled` e futuro por `scheduledFor asc`,
+  `createdAt asc`, `_id asc`;
+- check-in próprio da semana atual normalizada em `America/Sao_Paulo`;
+- até 10 atividades próprias de Protocol, TrackingRecord e CheckIn por
+  `occurredAt desc`, `entityId desc`;
+- `unreadNotifications=0` e `inventoryAlerts=[]` enquanto esses módulos não
+  estiverem implementados.
+
+Cards não retornam respostas, comentários de revisão, notas completas ou
+motivos completos.
 
 ### 21.2 Profissional
 
 Somente profissional `approved` recebe dashboard profissional completo.
+Profissional `pending` ou `rejected` recebe `200`, seu `verificationStatus` e
+valores operacionais neutros.
 
-- quantidade de atletas vinculados;
-- protocolos ativos;
-- check-ins pendentes de revisão;
-- trackings próximos;
-- atividade recente.
+- `athleteCount`: atletas distintos com link `active`;
+- `activeProtocols`: protocolos `active` do profissional e de atletas com
+  link `active` atual;
+- `pendingCheckIns`: check-ins `submitted` aguardando revisão, no mesmo escopo;
+- `upcomingTrackings`: até 10 futuros `scheduled`, ordenados por
+  `scheduledFor asc`, `createdAt asc`, `_id asc`;
+- `recentActivity`: até 10 itens de Protocol, TrackingRecord e CheckIn no
+  escopo ativo, por `occurredAt desc`, `entityId desc`.
 
 ### 21.3 Admin
 
-- usuários por perfil e estado;
-- profissionais aguardando aprovação;
-- vínculos ativos;
-- atividade recente de auditoria.
+- usuários totais e por role;
+- usuários ativos (`active=true` e `blockedAt=null`);
+- usuários bloqueados (`blockedAt` preenchido);
+- ProfessionalProfile com `verificationStatus=pending`;
+- vínculos com `status=active`;
+- até 10 AuditLogs por `createdAt desc`, `_id desc`, sem `metadata` ou
+  `ipHash`.
 
 Dashboards mostram informações descritivas, sem cálculo clínico.
 
@@ -2125,12 +2144,13 @@ API administrativa de auditoria        concluído
 Links V2 por e-mail + aceite            concluído
 Tracking Records V1                     concluído
 Check-ins V1                            concluído
+Dashboard API unificado V1              concluído
 ```
 
 ### 29.2 Próxima etapa
 
 ```text
-Dashboard API                           próxima implementação
+Frontend atleta funcional              próxima implementação
 ```
 
 Tracking Records e Check-ins foram implementados na branch:
@@ -2142,7 +2162,6 @@ feat/tracking-checkins-v1
 ### 29.3 Não integrado ou pendente
 
 ```text
-Dashboard API                           pendente
 Frontend atleta funcional               pendente
 Frontend profissional funcional         pendente
 Exames + PDF                            pendente
@@ -2182,6 +2201,14 @@ Tracking Records e Check-ins:
 lint sem erros
 ```
 
+Dashboard API unificado:
+
+```text
+33 suítes
+447 testes
+lint sem erros
+```
+
 Os números atuais do repositório devem ser confirmados novamente depois dos
 merges e antes de registrar novos valores neste documento.
 
@@ -2191,20 +2218,19 @@ merges e antes de registrar novos valores neste documento.
 
 Ordem recomendada a partir do estado atual:
 
-1. implementar `GET /dashboard`;
-2. conectar frontend do atleta;
-3. conectar frontend do profissional;
-4. implementar exames e PDF;
-5. implementar evolução e timeline;
-6. implementar estoque;
-7. implementar notificações internas;
-8. finalizar telas administrativas;
-9. criar seed mínimo;
-10. configurar armazenamento persistente de arquivos;
-11. publicar frontend;
-12. executar E2E, segurança e QA;
-13. atualizar README e documentação final;
-14. ensaiar demonstração do TCC.
+1. conectar frontend do atleta;
+2. conectar frontend do profissional;
+3. implementar exames e PDF;
+4. implementar evolução e timeline;
+5. implementar estoque;
+6. implementar notificações internas;
+7. finalizar telas administrativas;
+8. criar seed mínimo;
+9. configurar armazenamento persistente de arquivos;
+10. publicar frontend;
+11. executar E2E, segurança e QA;
+12. atualizar README e documentação final;
+13. ensaiar demonstração do TCC.
 
 ---
 
@@ -2376,7 +2402,7 @@ Os documentos antigos em DOCX permanecem úteis para apresentação e visão aca
 - [x] Links V2;
 - [x] tracking;
 - [x] check-ins;
-- [ ] dashboard;
+- [x] dashboard;
 - [ ] exames;
 - [ ] evolução e timeline;
 - [ ] estoque;

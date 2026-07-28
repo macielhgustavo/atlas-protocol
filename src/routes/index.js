@@ -2,6 +2,7 @@ const express = require('express');
 
 const auditLogRoutes = require('./audit-log-routes');
 const checkInRoutes = require('./check-in-routes');
+const dashboardRoutes = require('./dashboard-routes');
 const healthRoutes = require('./health-routes');
 const linkRoutes = require('./link-routes');
 const protocolRoutes = require('./protocol-routes');
@@ -15,6 +16,7 @@ const router = express.Router();
 
 router.use('/audit-logs', auditLogRoutes);
 router.use('/check-ins', checkInRoutes);
+router.use('/dashboard', dashboardRoutes);
 router.use('/health', healthRoutes);
 router.use('/links', linkRoutes);
 router.use('/protocols', protocolRoutes);

@@ -65,6 +65,15 @@ Health check:
 GET http://localhost:3000/api/v1/health
 ```
 
+Dashboard autenticado unificado:
+
+```text
+GET http://localhost:3000/api/v1/dashboard
+```
+
+O backend seleciona a projeção de atleta, profissional ou admin pela identidade
+autenticada. Não existem rotas separadas por perfil.
+
 Backend publicado atualmente:
 
 ```text
@@ -208,23 +217,17 @@ Rotas públicas previstas:
 
 ## Ordem oficial de desenvolvimento restante
 
-1. Consolidar `develop`, tracking e check-ins.
-2. Cadastro profissional + upload + aprovação.
-3. Vínculos com aceite/rejeição.
-4. Padronizar tracking/check-ins.
-5. Dashboard API.
-6. Frontend atleta.
-7. Frontend profissional.
-8. Exames + PDF.
-9. Evolução + timeline.
-10. Estoque simples.
-11. Notificações.
-12. Auditoria.
-13. Admin.
-14. Seed mínimo.
-15. Deploy frontend.
-16. Testes E2E/QA.
-17. Documentação final e ensaio do TCC.
+1. Frontend atleta.
+2. Frontend profissional.
+3. Exames + PDF.
+4. Evolução + timeline.
+5. Estoque simples.
+6. Notificações.
+7. Admin.
+8. Seed mínimo.
+9. Deploy frontend.
+10. Testes E2E/QA.
+11. Documentação final e ensaio do TCC.
 
 ## Seed de demonstração
 

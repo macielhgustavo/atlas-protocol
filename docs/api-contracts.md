@@ -1267,34 +1267,97 @@ Não existe criação manual pelo cliente nem delete físico.
 
 Endpoint único autenticado.
 
-O backend determina a resposta por `role`.
+O backend determina a resposta exclusivamente por `req.user.role`. O endpoint
+não possui query params funcionais e rejeita campos desconhecidos. Não são
+aceitos `role`, `userId`, `athleteId` ou `professionalId` para escolher outra
+identidade.
 
 ### Athlete
-
-Exemplo conceitual:
 
 ```json
 {
   "success": true,
   "data": {
     "role": "athlete",
-    "activeProtocol": {},
-    "nextTracking": {},
-    "currentCheckIn": {},
+    "activeProtocol": null,
+    "nextTracking": null,
+    "currentCheckIn": null,
     "recentActivity": [],
-    "unreadNotifications": 2,
+    "unreadNotifications": 0,
     "inventoryAlerts": []
   }
 }
 ```
 
+`activeProtocol` contém somente o protocolo próprio `active` mais recente por
+`activatedAt desc`, `createdAt desc`, `_id desc`:
+
+```json
+{
+  "id": "ObjectId",
+  "title": "Protocolo",
+  "status": "active",
+  "professionalId": "ObjectId",
+  "currentVersion": 2,
+  "startDate": "ISO",
+  "endDate": "ISO|null",
+  "continuous": false,
+  "activatedAt": "ISO|null"
+}
+```
+
+`nextTracking` contém somente o primeiro tracking próprio `scheduled` com
+`scheduledFor` maior ou igual ao instante da consulta, ordenado por
+`scheduledFor asc`, `createdAt asc`, `_id asc`:
+
+```json
+{
+  "id": "ObjectId",
+  "title": "Título",
+  "type": "scheduled",
+  "scheduledFor": "ISO",
+  "status": "scheduled",
+  "protocolId": "ObjectId|null",
+  "professionalId": "ObjectId|null"
+}
+```
+
+`currentCheckIn` representa a semana atual normalizada para segunda-feira em
+`America/Sao_Paulo`, em qualquer status:
+
+```json
+{
+  "id": "ObjectId",
+  "professionalId": "ObjectId",
+  "protocolId": "ObjectId|null",
+  "referenceWeek": "ISO",
+  "status": "pending",
+  "submittedAt": "ISO|null",
+  "reviewedAt": "ISO|null"
+}
+```
+
+`recentActivity` combina no máximo 10 itens próprios de Protocol,
+TrackingRecord e CheckIn, ordenados por `occurredAt desc` e `entityId desc`.
+Não inclui `responses`, `reviewComment`, `notes` ou `statusReason`.
+
+Enquanto Notifications e Inventory não estiverem implementados:
+
+```text
+unreadNotifications = 0
+inventoryAlerts = []
+```
+
 ### Professional
+
+Profissional `approved`:
 
 ```json
 {
   "success": true,
   "data": {
     "role": "professional",
+    "verificationStatus": "approved",
     "athleteCount": 8,
     "activeProtocols": 6,
     "pendingCheckIns": 3,
@@ -1304,7 +1367,35 @@ Exemplo conceitual:
 }
 ```
 
-Somente profissional `approved` recebe dashboard profissional completo.
+Semântica:
+
+- `athleteCount`: atletas distintos com vínculo `active`;
+- `activeProtocols`: protocolos `active` do profissional cujo atleta mantém
+  vínculo `active`;
+- `pendingCheckIns`: check-ins `submitted` aguardando revisão cujo atleta
+  mantém vínculo `active`;
+- `upcomingTrackings`: no máximo 10 trackings `scheduled` futuros, ordenados
+  por `scheduledFor asc`, `createdAt asc`, `_id asc`;
+- `recentActivity`: no máximo 10 itens de Protocol, TrackingRecord e CheckIn,
+  somente no escopo de vínculos `active`, ordenados por `occurredAt desc` e
+  `entityId desc`.
+
+Profissional `pending` ou `rejected` recebe `200` sem dados de atletas:
+
+```json
+{
+  "success": true,
+  "data": {
+    "role": "professional",
+    "verificationStatus": "pending",
+    "athleteCount": 0,
+    "activeProtocols": 0,
+    "pendingCheckIns": 0,
+    "upcomingTrackings": [],
+    "recentActivity": []
+  }
+}
+```
 
 ### Admin
 
@@ -1313,13 +1404,46 @@ Somente profissional `approved` recebe dashboard profissional completo.
   "success": true,
   "data": {
     "role": "admin",
-    "users": {},
+    "users": {
+      "total": 0,
+      "active": 0,
+      "blocked": 0,
+      "byRole": {
+        "admin": 0,
+        "professional": 0,
+        "athlete": 0
+      }
+    },
     "professionalsPending": 2,
     "activeLinks": 10,
     "recentAudit": []
   }
 }
 ```
+
+`users.total` conta todos os Users. `users.active` usa
+`active=true` e `blockedAt=null`. `users.blocked` conta `blockedAt` preenchido.
+`users.byRole` conta todos os usuários por role. `professionalsPending` conta
+ProfessionalProfile `pending`; `activeLinks` conta somente vínculos `active`.
+
+`recentAudit` retorna no máximo 10 itens por `createdAt desc`, `_id desc`:
+
+```json
+{
+  "id": "ObjectId",
+  "actorId": "ObjectId|null",
+  "action": "string",
+  "entityType": "string",
+  "entityId": "ObjectId|null",
+  "createdAt": "ISO"
+}
+```
+
+Não retorna `metadata` nem `ipHash`.
+
+Em todas as roles, o dashboard é somente leitura, não cria AuditLog e não
+retorna e-mails, hashes, documentos, PDFs, tokens, storageKey nem conteúdo
+clínico completo.
 
 ## 19. Audit
 
