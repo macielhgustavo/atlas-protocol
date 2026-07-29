@@ -840,33 +840,101 @@ documentada; a V1 não exige replica set, transação distribuída ou outbox.
 
 ### DR-055 — Apenas internas
 
-A V1 usa notificações internas.
+A V1 usa notificações internas persistidas no banco. Não inclui push real,
+SMS, WhatsApp, e-mail transacional, WebSocket, cron, scheduler, preferências
+de entrega, criação manual pelo cliente ou integração com serviço externo.
 
-Não inclui push real, SMS, WhatsApp ou e-mail transacional obrigatório.
+Os únicos tipos oficiais são:
 
-### DR-056 — Eventos possíveis
+```text
+professional_approved
+professional_rejected
+link_requested
+link_accepted
+link_rejected
+link_ended
+protocol_created
+protocol_version_created
+protocol_status_changed
+tracking_created
+checkin_submitted
+checkin_reviewed
+exam_created
+inventory_low_stock
+inventory_expired
+```
 
-Exemplos:
+Os únicos tipos de entidade relacionados são:
 
-- vínculo solicitado;
-- vínculo aceito;
-- vínculo rejeitado;
-- vínculo encerrado;
-- profissional aprovado/rejeitado;
-- protocolo criado/atualizado/status alterado;
-- check-in disponível/enviado/revisado;
-- acompanhamento próximo;
-- exame adicionado;
-- estoque baixo;
-- item vencido.
+```text
+ProfessionalProfile
+ProfessionalAthleteLink
+Protocol
+TrackingRecord
+CheckIn
+Exam
+InventoryItem
+```
+
+`entityType` e `entityId` devem estar ambos ausentes ou ambos presentes. A
+entidade relacionada nunca é populada na resposta.
+
+### DR-056 — Matriz de eventos
+
+As notificações são criadas explicitamente pelos services, após a mutação
+vencedora e a auditoria obrigatória do domínio:
+
+| Evento | Destinatário | Tipo | Entidade |
+|---|---|---|---|
+| Profissional aprovado | profissional analisado | `professional_approved` | `ProfessionalProfile` |
+| Profissional rejeitado | profissional analisado | `professional_rejected` | `ProfessionalProfile` |
+| Vínculo solicitado | atleta destinatário | `link_requested` | `ProfessionalAthleteLink` |
+| Vínculo aceito | profissional solicitante | `link_accepted` | `ProfessionalAthleteLink` |
+| Vínculo rejeitado | profissional solicitante | `link_rejected` | `ProfessionalAthleteLink` |
+| Vínculo encerrado por participante | somente a contraparte | `link_ended` | `ProfessionalAthleteLink` |
+| Vínculo encerrado por admin | profissional e atleta | `link_ended` | `ProfessionalAthleteLink` |
+| Protocolo criado | atleta do protocolo | `protocol_created` | `Protocol` |
+| Versão criada | atleta do protocolo | `protocol_version_created` | `Protocol` |
+| Status do protocolo alterado | atleta do protocolo | `protocol_status_changed` | `Protocol` |
+| Tracking criado por profissional | atleta do tracking | `tracking_created` | `TrackingRecord` |
+| Check-in enviado | profissional responsável | `checkin_submitted` | `CheckIn` |
+| Check-in revisado | atleta do check-in | `checkin_reviewed` | `CheckIn` |
+| Exame criado por profissional | atleta do exame | `exam_created` | `Exam` |
+| Item entra em estoque baixo durante escrita | atleta dono | `inventory_low_stock` | `InventoryItem` |
+| Item entra em estado vencido durante escrita | atleta dono | `inventory_expired` | `InventoryItem` |
+
+Tracking manual e exame criados pelo próprio atleta não geram notificação
+para ele mesmo. Não existem notificações de check-in disponível, tracking
+futuro, mudança de status de tracking, evolução física, leitura, arquivamento,
+login, senha, usuário bloqueado, substância, History, Dashboard ou AuditLog.
 
 ### DR-057 — Leitura
 
-Usuário só marca suas próprias notificações como lidas.
+Admin, atleta e profissional `approved`, `pending` ou `rejected` consultam,
+marcam como lidas e arquivam somente suas próprias notificações.
+
+`readAt` e `archivedAt` representam os estados. Marcar como lida e arquivar
+são operações idempotentes e preservam o primeiro timestamp. `read-all`
+altera, com um único instante, somente notificações próprias não arquivadas e
+ainda não lidas. Arquivar não marca como lida. Não existe restore ou exclusão
+física.
 
 ### DR-058 — Não bloquear operação principal
 
-Falha ao criar notificação não deve invalidar a operação principal já concluída, salvo se explicitamente tratado como transação futura.
+Falha ao criar notificação não invalida nem desfaz a operação principal já
+concluída ou sua auditoria. A falha é capturada pelo wrapper best-effort e
+registrada pelo logger da aplicação somente com tipo da notificação, tipo da
+entidade e código do erro, sem textos, IDs de usuário ou conteúdo sensível.
+
+A V1 não usa hooks globais, fila, outbox ou `dedupeKey` e não garante entrega
+exactly-once se o processo falhar entre o domínio e a notificação. Duplicatas
+são evitadas pela semântica da mutação de origem: somente a transição
+vencedora notifica. Estoque compara os estados derivados anterior e posterior
+durante escritas; passagem do relógio, GET, listagem ou serialização não cria
+notificação de vencimento.
+
+Notification não é AuditLog. Criar, ler ou arquivar notificação não gera
+ações de auditoria.
 
 ## 12. Dashboard
 
@@ -919,8 +987,9 @@ A atividade recente combina somente Protocol, TrackingRecord e CheckIn do
 próprio atleta, ordena por `occurredAt desc` e `entityId desc` e retorna no
 máximo 10 itens, sem conteúdo clínico completo.
 
-Enquanto Notifications e Inventory não estiverem implementados, os contratos
-reservados retornam `unreadNotifications=0` e `inventoryAlerts=[]`.
+Nesta branch, o Dashboard não integra Notifications nem Inventory: os campos
+reservados permanecem `unreadNotifications=0` e `inventoryAlerts=[]` até uma
+tarefa específica de integração.
 
 ### DR-063 — Profissional
 

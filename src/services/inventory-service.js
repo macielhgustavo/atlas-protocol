@@ -5,6 +5,10 @@ const INVENTORY_MOVEMENT_TYPES = require(
   '../constants/inventory-movement-types',
 );
 const LINK_STATUSES = require('../constants/link-statuses');
+const NOTIFICATION_ENTITY_TYPES = require(
+  '../constants/notification-entity-types',
+);
+const NOTIFICATION_TYPES = require('../constants/notification-types');
 const USER_ROLES = require('../constants/user-roles');
 const AuditLog = require('../models/audit-log');
 const InventoryItem = require('../models/inventory-item');
@@ -13,10 +17,12 @@ const ProfessionalAthleteLink = require('../models/professional-athlete-link');
 const Substance = require('../models/substance');
 const AppError = require('../utils/app-error');
 const {
+  inventoryState,
   toInventoryItemResponse,
   toInventoryMovementResponse,
 } = require('../utils/inventory-response');
 const auditService = require('./audit-service');
+const notificationService = require('./notification-service');
 
 const MAX_QUANTITY = 1_000_000_000;
 const INITIAL_REASON = 'Estoque inicial.';
@@ -132,6 +138,25 @@ async function recordMovementAudit(requester, movement) {
   });
 }
 
+async function notifyInventoryTransitions(item, previousState, nextState) {
+  if (!previousState.lowStock && nextState.lowStock) {
+    await notificationService.createNotificationFromTemplateSafely({
+      userId: item.athleteId,
+      type: NOTIFICATION_TYPES.INVENTORY_LOW_STOCK,
+      entityType: NOTIFICATION_ENTITY_TYPES.INVENTORY_ITEM,
+      entityId: item.id,
+    });
+  }
+  if (!previousState.expired && nextState.expired) {
+    await notificationService.createNotificationFromTemplateSafely({
+      userId: item.athleteId,
+      type: NOTIFICATION_TYPES.INVENTORY_EXPIRED,
+      entityType: NOTIFICATION_ENTITY_TYPES.INVENTORY_ITEM,
+      entityId: item.id,
+    });
+  }
+}
+
 async function rollbackCreation(item, movement, auditIds) {
   const cleanup = [];
   if (auditIds.length) {
@@ -187,6 +212,11 @@ async function createInventoryItem(requester, input) {
   }
 
   const now = new Date();
+  await notifyInventoryTransitions(
+    item,
+    { lowStock: false, expired: false },
+    inventoryState(item, now),
+  );
   return toInventoryItemResponse(item, now);
 }
 
@@ -312,6 +342,7 @@ async function updateInventoryItem(requester, itemId, input) {
   const now = new Date();
   const item = await getOwnedInventoryItem(requester, itemId);
   if (item.archivedAt) throw archivedError();
+  const previousState = inventoryState(item, now);
 
   if (
     hasOwn(input, 'substanceId') &&
@@ -330,6 +361,11 @@ async function updateInventoryItem(requester, itemId, input) {
   await recordInventoryAudit(requester, updatedItem, 'metadata_updated', {
     fieldsChanged: Object.keys(input).sort(),
   });
+  await notifyInventoryTransitions(
+    updatedItem,
+    previousState,
+    inventoryState(updatedItem, now),
+  );
   return toInventoryItemResponse(updatedItem, now);
 }
 
@@ -472,6 +508,17 @@ async function createInventoryMovement(requester, itemId, input) {
   }
 
   await recordMovementAudit(requester, movement);
+  await notifyInventoryTransitions(
+    previousItem,
+    inventoryState(previousItem, now),
+    inventoryState(
+      {
+        ...previousItem.toObject(),
+        quantity: resultingQuantity,
+      },
+      now,
+    ),
+  );
   return toInventoryMovementResponse(movement);
 }
 

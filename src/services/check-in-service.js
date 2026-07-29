@@ -3,6 +3,10 @@ const AUDIT_ENTITY_TYPES = require('../constants/audit-entity-types');
 const CHECK_IN_STATUSES = require('../constants/check-in-statuses');
 const ERROR_CODES = require('../constants/error-codes');
 const LINK_STATUSES = require('../constants/link-statuses');
+const NOTIFICATION_ENTITY_TYPES = require(
+  '../constants/notification-entity-types',
+);
+const NOTIFICATION_TYPES = require('../constants/notification-types');
 const PROTOCOL_STATUSES = require('../constants/protocol-statuses');
 const USER_ROLES = require('../constants/user-roles');
 const CheckIn = require('../models/check-in');
@@ -17,6 +21,7 @@ const {
 } = require('../utils/check-in-responses');
 const { normalizeReferenceWeek } = require('../utils/normalize-reference-week');
 const auditService = require('./audit-service');
+const notificationService = require('./notification-service');
 
 function notFoundError(resource = 'Check-in') {
   return new AppError(
@@ -372,6 +377,12 @@ async function submitCheckIn(requester, checkInId) {
     CHECK_IN_STATUSES.PENDING,
     CHECK_IN_STATUSES.SUBMITTED,
   );
+  await notificationService.createNotificationFromTemplateSafely({
+    userId: submittedCheckIn.professionalId,
+    type: NOTIFICATION_TYPES.CHECKIN_SUBMITTED,
+    entityType: NOTIFICATION_ENTITY_TYPES.CHECK_IN,
+    entityId: submittedCheckIn.id,
+  });
   return toCheckInResponse(submittedCheckIn);
 }
 
@@ -419,6 +430,12 @@ async function reviewCheckIn(requester, checkInId, { reviewComment }) {
     CHECK_IN_STATUSES.SUBMITTED,
     CHECK_IN_STATUSES.REVIEWED,
   );
+  await notificationService.createNotificationFromTemplateSafely({
+    userId: reviewedCheckIn.athleteId,
+    type: NOTIFICATION_TYPES.CHECKIN_REVIEWED,
+    entityType: NOTIFICATION_ENTITY_TYPES.CHECK_IN,
+    entityId: reviewedCheckIn.id,
+  });
   return toCheckInResponse(reviewedCheckIn);
 }
 

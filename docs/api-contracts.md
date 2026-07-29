@@ -1613,27 +1613,181 @@ Não existe delete físico.
 
 ### GET `/notifications`
 
-Próprias.
+Autenticado. Admin, atleta e profissional `approved`, `pending` ou `rejected`
+listam somente as próprias notificações. Esta rota não usa
+`professionalApprovalMiddleware`.
 
 Filtros:
 
-- `read`
-- `archived`
-- paginação
+- `read=true|false`: omitido aceita qualquer estado de leitura;
+- `archived=true|false`: omitido ou `false` retorna somente não arquivadas;
+- `page`: padrão 1;
+- `limit`: padrão 20, máximo 100.
+
+Ordenação fixa:
+
+```text
+createdAt desc
+_id desc
+```
+
+Não aceita `userId`, `type`, `entityType`, `entityId`, `sortBy`, `sortOrder`
+ou query desconhecida.
+
+Resposta paginada:
+
+```json
+{
+  "success": true,
+  "data": [
+    {
+      "id": "ObjectId",
+      "type": "checkin_reviewed",
+      "title": "Check-in revisado",
+      "message": "Seu check-in foi revisado.",
+      "entityType": "CheckIn",
+      "entityId": "ObjectId",
+      "readAt": null,
+      "archivedAt": null,
+      "createdAt": "ISO 8601"
+    }
+  ],
+  "meta": {
+    "page": 1,
+    "limit": 20,
+    "total": 1,
+    "totalPages": 1
+  }
+}
+```
+
+O serializer não retorna `userId`, `__v`, usuário populado, role, e-mail,
+payload, metadata ou dados da entidade relacionada.
 
 ### PATCH `/notifications/:id/read`
 
-Marca própria como lida.
+Autenticado. `Content-Type: application/json` e body obrigatório:
+
+```json
+{}
+```
+
+Usa compare-and-set por `_id`, `userId` autenticado e `readAt=null`. A
+primeira chamada define `readAt`; chamadas posteriores retornam `200` e
+preservam o timestamp original. Notificação própria arquivada também pode ser
+marcada como lida. Fora do ownership retorna `404 RESOURCE_NOT_FOUND`;
+ObjectId inválido retorna `400 INVALID_OBJECT_ID`.
+
+```json
+{
+  "success": true,
+  "data": {
+    "id": "ObjectId",
+    "type": "link_requested",
+    "title": "Nova solicitação de vínculo",
+    "message": "Você recebeu uma solicitação de vínculo profissional.",
+    "entityType": "ProfessionalAthleteLink",
+    "entityId": "ObjectId",
+    "readAt": "ISO 8601",
+    "archivedAt": null,
+    "createdAt": "ISO 8601"
+  },
+  "message": "Notificação marcada como lida."
+}
+```
 
 ### PATCH `/notifications/read-all`
 
-Marca todas próprias como lidas.
+Autenticado. Esta rota é registrada antes de `/:id/read`.
+
+`Content-Type: application/json` e body obrigatório:
+
+```json
+{}
+```
+
+Executa um único `updateMany` com um único instante sobre notificações do
+usuário autenticado que possuam `archivedAt=null` e `readAt=null`. Não altera
+notificações arquivadas, já lidas ou alheias.
+
+```json
+{
+  "success": true,
+  "data": {
+    "updatedCount": 3
+  },
+  "message": "Notificações marcadas como lidas."
+}
+```
+
+Uma repetição sem novos itens retorna `updatedCount=0`.
 
 ### PATCH `/notifications/:id/archive`
 
-Oculta/arquiva para o usuário.
+Autenticado. `Content-Type: application/json` e body obrigatório:
 
-Não existe criação manual pelo cliente nem delete físico.
+```json
+{}
+```
+
+Usa compare-and-set por `_id`, `userId` autenticado e `archivedAt=null`. A
+primeira chamada define `archivedAt`; chamadas posteriores retornam `200` e
+preservam o timestamp original. Arquivar não altera `readAt`. Fora do
+ownership retorna `404 RESOURCE_NOT_FOUND`.
+
+```json
+{
+  "success": true,
+  "data": {
+    "id": "ObjectId",
+    "type": "exam_created",
+    "title": "Exame registrado",
+    "message": "Um exame foi registrado no seu histórico.",
+    "entityType": "Exam",
+    "entityId": "ObjectId",
+    "readAt": null,
+    "archivedAt": "ISO 8601",
+    "createdAt": "ISO 8601"
+  },
+  "message": "Notificação arquivada com sucesso."
+}
+```
+
+Bodies com qualquer propriedade e queries desconhecidas são rejeitados. As
+operações de leitura e arquivamento não geram AuditLog nem outra Notification.
+Não existe criação manual pelo cliente, PATCH genérico, restore ou delete
+físico.
+
+Criação interna usa somente os tipos:
+
+```text
+professional_approved
+professional_rejected
+link_requested
+link_accepted
+link_rejected
+link_ended
+protocol_created
+protocol_version_created
+protocol_status_changed
+tracking_created
+checkin_submitted
+checkin_reviewed
+exam_created
+inventory_low_stock
+inventory_expired
+```
+
+`entityType` aceita somente `ProfessionalProfile`,
+`ProfessionalAthleteLink`, `Protocol`, `TrackingRecord`, `CheckIn`, `Exam` ou
+`InventoryItem`. `entityType` e `entityId` devem ser ambos nulos ou ambos
+presentes. Títulos têm 1–160 caracteres, mensagens têm 1–500, recebem trim e
+não aceitam HTML ou conteúdo fornecido pelo cliente.
+
+A criação é best-effort depois da operação principal e da auditoria
+obrigatória. Não há fila, outbox, garantia exactly-once, scheduler ou
+notificações temporais automáticas. Transições de estoque são detectadas
+somente durante escritas. Esta branch não altera o contrato do Dashboard.
 
 ## 18. Dashboard
 
@@ -1715,7 +1869,8 @@ identidade.
 TrackingRecord e CheckIn, ordenados por `occurredAt desc` e `entityId desc`.
 Não inclui `responses`, `reviewComment`, `notes` ou `statusReason`.
 
-Enquanto Notifications e Inventory não estiverem implementados:
+Nesta branch, Notifications não altera o Dashboard e Inventory também
+permanece sem integração:
 
 ```text
 unreadNotifications = 0

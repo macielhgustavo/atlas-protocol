@@ -2,6 +2,10 @@ const AUDIT_ACTIONS = require('../constants/audit-actions');
 const AUDIT_ENTITY_TYPES = require('../constants/audit-entity-types');
 const ERROR_CODES = require('../constants/error-codes');
 const LINK_STATUSES = require('../constants/link-statuses');
+const NOTIFICATION_ENTITY_TYPES = require(
+  '../constants/notification-entity-types',
+);
+const NOTIFICATION_TYPES = require('../constants/notification-types');
 const PROTOCOL_STATUSES = require('../constants/protocol-statuses');
 const TRACKING_RECORD_STATUSES = require('../constants/tracking-record-statuses');
 const TRACKING_RECORD_TYPES = require('../constants/tracking-record-types');
@@ -15,6 +19,7 @@ const {
   toTrackingRecordResponse,
 } = require('../utils/tracking-record-response');
 const auditService = require('./audit-service');
+const notificationService = require('./notification-service');
 
 const FINAL_STATUSES = [
   TRACKING_RECORD_STATUSES.COMPLETED,
@@ -218,6 +223,15 @@ async function createTrackingRecord(requester, input) {
       type: record.type,
     },
   });
+
+  if (requester.role === USER_ROLES.PROFESSIONAL) {
+    await notificationService.createNotificationFromTemplateSafely({
+      userId: record.athleteId,
+      type: NOTIFICATION_TYPES.TRACKING_CREATED,
+      entityType: NOTIFICATION_ENTITY_TYPES.TRACKING_RECORD,
+      entityId: record.id,
+    });
+  }
 
   return toTrackingRecordResponse(record);
 }

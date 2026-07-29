@@ -2,6 +2,10 @@ const AUDIT_ACTIONS = require('../constants/audit-actions');
 const AUDIT_ENTITY_TYPES = require('../constants/audit-entity-types');
 const ERROR_CODES = require('../constants/error-codes');
 const LINK_STATUSES = require('../constants/link-statuses');
+const NOTIFICATION_ENTITY_TYPES = require(
+  '../constants/notification-entity-types',
+);
+const NOTIFICATION_TYPES = require('../constants/notification-types');
 const PROTOCOL_STATUS_TRANSITIONS = require('../constants/protocol-status-transitions');
 const PROTOCOL_STATUSES = require('../constants/protocol-statuses');
 const USER_ROLES = require('../constants/user-roles');
@@ -16,6 +20,7 @@ const {
   toVersionResponse,
 } = require('../utils/protocol-response');
 const auditService = require('./audit-service');
+const notificationService = require('./notification-service');
 
 const protocolMutationLocks = new Map();
 
@@ -296,6 +301,13 @@ async function createProtocol(requester, input) {
     await Promise.allSettled(cleanupOperations);
     throw error;
   }
+
+  await notificationService.createNotificationFromTemplateSafely({
+    userId: protocol.athleteId,
+    type: NOTIFICATION_TYPES.PROTOCOL_CREATED,
+    entityType: NOTIFICATION_ENTITY_TYPES.PROTOCOL,
+    entityId: protocol.id,
+  });
 
   return {
     protocol: toProtocolResponse(protocol),
@@ -593,6 +605,13 @@ async function createProtocolVersionWithoutLock(requester, protocolId, input) {
     },
   });
 
+  await notificationService.createNotificationFromTemplateSafely({
+    userId: updatedProtocol.athleteId,
+    type: NOTIFICATION_TYPES.PROTOCOL_VERSION_CREATED,
+    entityType: NOTIFICATION_ENTITY_TYPES.PROTOCOL,
+    entityId: updatedProtocol.id,
+  });
+
   return {
     protocol: toProtocolResponse(updatedProtocol),
     currentVersion: toVersionResponse(nextVersion),
@@ -691,6 +710,13 @@ async function updateProtocolStatusWithoutLock(requester, protocolId, input) {
     entityType: AUDIT_ENTITY_TYPES.PROTOCOL,
     entityId: protocol.id,
     metadata: auditMetadata,
+  });
+
+  await notificationService.createNotificationFromTemplateSafely({
+    userId: updatedProtocol.athleteId,
+    type: NOTIFICATION_TYPES.PROTOCOL_STATUS_CHANGED,
+    entityType: NOTIFICATION_ENTITY_TYPES.PROTOCOL,
+    entityId: updatedProtocol.id,
   });
 
   return toProtocolResponse(updatedProtocol);

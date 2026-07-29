@@ -2,12 +2,17 @@ const AUDIT_ACTIONS = require('../constants/audit-actions');
 const AUDIT_ENTITY_TYPES = require('../constants/audit-entity-types');
 const ERROR_CODES = require('../constants/error-codes');
 const LINK_STATUSES = require('../constants/link-statuses');
+const NOTIFICATION_ENTITY_TYPES = require(
+  '../constants/notification-entity-types',
+);
+const NOTIFICATION_TYPES = require('../constants/notification-types');
 const USER_ROLES = require('../constants/user-roles');
 const ProfessionalAthleteLink = require('../models/professional-athlete-link');
 const User = require('../models/user');
 const AppError = require('../utils/app-error');
 const toLinkResponse = require('../utils/link-response');
 const auditService = require('./audit-service');
+const notificationService = require('./notification-service');
 
 const OPEN_LINK_STATUSES = [LINK_STATUSES.PENDING, LINK_STATUSES.ACTIVE];
 const MAX_CREATE_ATTEMPTS = 2;
@@ -142,6 +147,25 @@ async function recordLinkAudit(requester, action, link, metadata) {
   });
 }
 
+function notifyLink(userId, type, link) {
+  return notificationService.createNotificationFromTemplateSafely({
+    userId,
+    type,
+    entityType: NOTIFICATION_ENTITY_TYPES.PROFESSIONAL_ATHLETE_LINK,
+    entityId: link.id,
+  });
+}
+
+function endedLinkRecipients(requester, link) {
+  if (requester.role === USER_ROLES.ADMIN) {
+    return [link.professionalId, link.athleteId];
+  }
+  if (requester.role === USER_ROLES.PROFESSIONAL) {
+    return [link.athleteId];
+  }
+  return [link.professionalId];
+}
+
 async function createPendingLink(professionalId, athleteId) {
   await ProfessionalAthleteLink.init();
 
@@ -187,6 +211,11 @@ async function createLink(requester, { athleteEmail }) {
     AUDIT_ACTIONS.LINK_REQUESTED,
     link,
     transitionMetadata(null, LINK_STATUSES.PENDING),
+  );
+  await notifyLink(
+    link.athleteId,
+    NOTIFICATION_TYPES.LINK_REQUESTED,
+    link,
   );
 
   return toLinkResponse(link);
@@ -280,6 +309,11 @@ async function acceptLink(requester, linkId) {
     updatedLink,
     transitionMetadata(LINK_STATUSES.PENDING, LINK_STATUSES.ACTIVE),
   );
+  await notifyLink(
+    updatedLink.professionalId,
+    NOTIFICATION_TYPES.LINK_ACCEPTED,
+    updatedLink,
+  );
 
   return toLinkResponse(updatedLink);
 }
@@ -314,6 +348,11 @@ async function rejectLink(requester, linkId, { reason } = {}) {
       LINK_STATUSES.REJECTED,
       normalizedReason,
     ),
+  );
+  await notifyLink(
+    updatedLink.professionalId,
+    NOTIFICATION_TYPES.LINK_REJECTED,
+    updatedLink,
   );
 
   return toLinkResponse(updatedLink);
@@ -356,6 +395,15 @@ async function endLink(requester, linkId, { reason } = {}) {
       LINK_STATUSES.ACTIVE,
       LINK_STATUSES.ENDED,
       normalizedReason,
+    ),
+  );
+  await Promise.all(
+    endedLinkRecipients(requester, updatedLink).map((recipientId) =>
+      notifyLink(
+        recipientId,
+        NOTIFICATION_TYPES.LINK_ENDED,
+        updatedLink,
+      ),
     ),
   );
 

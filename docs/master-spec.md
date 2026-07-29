@@ -1477,21 +1477,24 @@ GET   /api/v1/inventory/:id/movements
 ```
 
 Não existem DELETE, restore, criação ou movimentação por profissional,
-integração automática com tracking, Notification, Dashboard ou Timeline nesta
-etapa.
+integração automática com tracking, Dashboard ou Timeline. Inventory integra
+Notification somente nas transições derivadas de estoque baixo e vencimento
+detectadas durante operações de escrita.
 
 ---
 
 ## 20. Notificações internas
 
-A V1 usa notificações internas no banco. Não há dependência de SMS, WhatsApp, push nativo ou e-mail automatizado.
+A V1 usa notificações internas no banco. Não há dependência de SMS, WhatsApp,
+push nativo, e-mail automatizado, WebSocket, cron, scheduler ou serviço
+externo.
 
 Modelo conceitual:
 
 ```js
 {
   userId: ObjectId,
-  type: String,
+  type: String, // enum oficial
   title: String,
   message: String,
   entityType: String | null,
@@ -1502,27 +1505,86 @@ Modelo conceitual:
 }
 ```
 
-Eventos previstos:
+Tipos oficiais:
 
-- solicitação de vínculo;
-- vínculo aceito, rejeitado ou encerrado;
-- profissional aprovado ou rejeitado;
-- protocolo atualizado ou com status alterado;
-- check-in disponível, enviado ou revisado;
-- tracking próximo;
-- exame adicionado;
-- estoque baixo;
-- item vencido.
+```text
+professional_approved
+professional_rejected
+link_requested
+link_accepted
+link_rejected
+link_ended
+protocol_created
+protocol_version_created
+protocol_status_changed
+tracking_created
+checkin_submitted
+checkin_reviewed
+exam_created
+inventory_low_stock
+inventory_expired
+```
 
-Falha de notificação não deve desfazer a operação principal.
+Tipos de entidade oficiais:
 
-Endpoints conceituais:
+```text
+ProfessionalProfile
+ProfessionalAthleteLink
+Protocol
+TrackingRecord
+CheckIn
+Exam
+InventoryItem
+```
+
+`entityType` e `entityId` ficam ambos nulos ou ambos presentes. Título possui
+1–160 caracteres e mensagem 1–500; ambos recebem trim. A resposta não popula
+entidades e não expõe `userId`, payload, metadata ou dados sensíveis.
+
+Matriz de criação:
+
+- aprovação/rejeição profissional notifica o profissional analisado;
+- solicitação de vínculo notifica o atleta;
+- aceite/rejeição notifica o profissional;
+- encerramento por participante notifica somente a contraparte; encerramento
+  por admin notifica os dois participantes;
+- criação, versionamento e mudança de status de protocolo notificam o atleta;
+- tracking criado por profissional notifica o atleta; tracking manual não
+  notifica o próprio atleta;
+- envio de check-in notifica o profissional e revisão notifica o atleta;
+- exame criado por profissional notifica o atleta; criação pelo atleta não
+  notifica ele mesmo;
+- estoque notifica somente quando uma escrita cruza `lowStock false -> true`
+  ou `expired false -> true`.
+
+Não existem `tracking_upcoming`, `checkin_available`, notificações de
+PhysicalProgress, mudança de status de tracking ou eventos por simples
+passagem do tempo. GET, listagem e serialização de Inventory não notificam.
+
+A criação interna é explícita nos services e ocorre depois da mutação
+vencedora e da auditoria obrigatória. Falha é best-effort: é registrada de
+forma segura e não desfaz o domínio. Não há hooks globais, fila, outbox,
+`dedupeKey` ou garantia exactly-once. A idempotência vem da operação de origem
+e da comparação anterior/posterior no Inventory.
+
+Endpoints:
 
 ```text
 GET   /api/v1/notifications
 PATCH /api/v1/notifications/:id/read
 PATCH /api/v1/notifications/read-all
+PATCH /api/v1/notifications/:id/archive
 ```
+
+Todas as roles acessam somente notificações próprias. Profissional `pending`
+ou `rejected` também possui acesso e essas rotas não usam middleware de
+aprovação profissional. A listagem aceita somente `read`, `archived`, `page`
+e `limit`, ordenada fixamente por `createdAt desc`, `_id desc`.
+
+Leitura e arquivamento são idempotentes e preservam o primeiro timestamp.
+`read-all` altera somente próprias, não arquivadas e não lidas, usando um
+único instante. Não existe POST público, PATCH genérico, restore, DELETE ou
+AuditLog de Notification.
 
 ---
 
@@ -1550,8 +1612,8 @@ persistidos ou AuditLog de consulta.
 - check-in próprio da semana atual normalizada em `America/Sao_Paulo`;
 - até 10 atividades próprias de Protocol, TrackingRecord e CheckIn por
   `occurredAt desc`, `entityId desc`;
-- `unreadNotifications=0` e `inventoryAlerts=[]` enquanto esses módulos não
-  estiverem implementados.
+- `unreadNotifications=0` e `inventoryAlerts=[]` permanecem reservados nesta
+  branch; a integração do Dashboard não faz parte de Notifications V1.
 
 Cards não retornam respostas, comentários de revisão, notas completas ou
 motivos completos.
@@ -1926,6 +1988,7 @@ GET   /inventory/:id/movements
 GET   /notifications
 PATCH /notifications/:id/read
 PATCH /notifications/read-all
+PATCH /notifications/:id/archive
 
 GET   /dashboard
 GET   /audit-logs
@@ -2246,6 +2309,7 @@ Exames + PDF seguro V1                  concluído
 Evolução física V1                      concluído
 Timeline histórica V1                   concluído
 Estoque e movimentações V1              concluído
+Notificações internas V1                concluído
 ```
 
 ### 29.2 Próxima etapa
@@ -2265,7 +2329,6 @@ feat/tracking-checkins-v1
 ```text
 Frontend atleta funcional               pendente
 Frontend profissional funcional         pendente
-Notificações                            pendente
 Admin frontend final                    pendente
 Seed mínimo                             pendente
 Deploy frontend                         pendente
@@ -2323,6 +2386,14 @@ Estoque e movimentações:
 lint sem erros
 ```
 
+Notificações internas:
+
+```text
+53 suítes
+698 testes
+lint sem erros
+```
+
 Os números atuais do repositório devem ser confirmados novamente depois dos
 merges e antes de registrar novos valores neste documento.
 
@@ -2334,14 +2405,13 @@ Ordem recomendada a partir do estado atual:
 
 1. conectar frontend do atleta;
 2. conectar frontend do profissional;
-3. implementar notificações internas;
-4. finalizar telas administrativas;
-5. criar seed mínimo;
-6. configurar armazenamento persistente de arquivos;
-7. publicar frontend;
-8. executar E2E, segurança e QA;
-9. atualizar README e documentação final;
-10. ensaiar demonstração do TCC.
+3. finalizar telas administrativas;
+4. criar seed mínimo;
+5. configurar armazenamento persistente de arquivos;
+6. publicar frontend;
+7. executar E2E, segurança e QA;
+8. atualizar README e documentação final;
+9. ensaiar demonstração do TCC.
 
 ---
 
@@ -2517,7 +2587,7 @@ Os documentos antigos em DOCX permanecem úteis para apresentação e visão aca
 - [x] exames;
 - [x] evolução e timeline;
 - [x] estoque;
-- [ ] notificações;
+- [x] notificações;
 - [ ] seed final;
 - [ ] E2E e QA.
 

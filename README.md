@@ -233,8 +233,34 @@ saldo negativo e são bloqueadas em item vencido. Entradas e ajustes continuam
 permitidos para correção administrativa.
 
 `expired` e `lowStock` são derivados em leitura, sem persistência. O
-arquivamento é lógico e idempotente; não existem DELETE, restore, Notification,
-integração com Dashboard ou eventos de estoque na Timeline desta etapa.
+arquivamento é lógico e idempotente; não existem DELETE, restore, integração
+com Dashboard ou eventos de estoque na Timeline. Notifications recebe somente
+as transições de estoque baixo e vencimento detectadas durante escritas.
+
+### Notificações internas
+
+```text
+GET   /api/v1/notifications
+PATCH /api/v1/notifications/:id/read
+PATCH /api/v1/notifications/read-all
+PATCH /api/v1/notifications/:id/archive
+```
+
+Admin, atleta e profissional em qualquer estado de verificação operam somente
+as próprias notificações. A listagem aceita `read`, `archived`, `page` e
+`limit`, com ordenação fixa da mais recente para a mais antiga. Leitura,
+`read-all` e arquivamento são idempotentes; não existe POST público, restore
+ou DELETE.
+
+As notificações são geradas internamente por eventos congelados de verificação
+profissional, vínculos, protocolos, tracking criado por profissional,
+envio/revisão de check-in, exame criado por profissional e transições de
+estoque baixo ou vencido detectadas durante escritas. A criação é best-effort:
+uma falha não desfaz o domínio nem sua auditoria. A V1 não possui fila, outbox,
+garantia exactly-once, scheduler, push, e-mail, SMS ou WhatsApp.
+
+Esta etapa não altera o Dashboard; `unreadNotifications` continua com o valor
+reservado até a integração específica futura.
 
 ## Preservação histórica
 
@@ -297,12 +323,11 @@ Rotas públicas previstas:
 
 1. Frontend atleta.
 2. Frontend profissional.
-3. Notificações.
-4. Admin.
-5. Seed mínimo.
-6. Deploy frontend.
-7. Testes E2E/QA.
-8. Documentação final e ensaio do TCC.
+3. Admin.
+4. Seed mínimo.
+5. Deploy frontend.
+6. Testes E2E/QA.
+7. Documentação final e ensaio do TCC.
 
 ## Seed de demonstração
 

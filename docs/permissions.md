@@ -241,9 +241,20 @@ Condições:
 | Marcar todas próprias como lidas | P | P | P |
 | Arquivar/ocultar própria | P | P | P |
 | Criar manualmente | N | N | N |
+| Restaurar arquivada | N | N | N |
 | Excluir fisicamente | N | N | N |
 
-Notificações são geradas pelo sistema.
+Notificações são geradas exclusivamente pelo sistema. Todas as operações
+públicas usam o `userId` da identidade autenticada; `userId` não é aceito em
+body ou query e um recurso alheio responde `RESOURCE_NOT_FOUND`.
+
+Profissionais `pending` ou `rejected` podem operar as próprias notificações
+sem `professionalApprovalMiddleware`, mas continuam impedidos de exercer
+permissões profissionais nos demais módulos.
+
+Marcar como lida, marcar todas e arquivar são operações pessoais idempotentes
+e não geram AuditLog. Não existe POST público, PATCH genérico, DELETE ou
+restore.
 
 ## 13. Dashboard
 

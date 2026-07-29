@@ -1,6 +1,10 @@
 const AUDIT_ACTIONS = require('../constants/audit-actions');
 const AUDIT_ENTITY_TYPES = require('../constants/audit-entity-types');
 const ERROR_CODES = require('../constants/error-codes');
+const NOTIFICATION_ENTITY_TYPES = require(
+  '../constants/notification-entity-types',
+);
+const NOTIFICATION_TYPES = require('../constants/notification-types');
 const PROFESSIONAL_VERIFICATION_STATUSES = require(
   '../constants/professional-verification-statuses',
 );
@@ -10,6 +14,7 @@ const User = require('../models/user');
 const AppError = require('../utils/app-error');
 const toProfessionalVerificationResponse = require('../utils/professional-verification-response');
 const auditService = require('./audit-service');
+const notificationService = require('./notification-service');
 
 const SAFE_USER_FIELDS = 'name email role active';
 
@@ -141,6 +146,18 @@ async function transitionPendingVerification(
       from: PROFESSIONAL_VERIFICATION_STATUSES.PENDING,
       to: profile.verificationStatus,
     },
+  });
+
+  const notificationType =
+    profile.verificationStatus ===
+    PROFESSIONAL_VERIFICATION_STATUSES.APPROVED
+      ? NOTIFICATION_TYPES.PROFESSIONAL_APPROVED
+      : NOTIFICATION_TYPES.PROFESSIONAL_REJECTED;
+  await notificationService.createNotificationFromTemplateSafely({
+    userId: profile.userId,
+    type: notificationType,
+    entityType: NOTIFICATION_ENTITY_TYPES.PROFESSIONAL_PROFILE,
+    entityId: profile.id,
   });
 
   await profile.populate({ path: 'userId', select: SAFE_USER_FIELDS });

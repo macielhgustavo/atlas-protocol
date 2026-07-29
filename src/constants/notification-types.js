@@ -1,0 +1,17 @@
+module.exports = Object.freeze({
+  PROFESSIONAL_APPROVED: 'professional_approved',
+  PROFESSIONAL_REJECTED: 'professional_rejected',
+  LINK_REQUESTED: 'link_requested',
+  LINK_ACCEPTED: 'link_accepted',
+  LINK_REJECTED: 'link_rejected',
+  LINK_ENDED: 'link_ended',
+  PROTOCOL_CREATED: 'protocol_created',
+  PROTOCOL_VERSION_CREATED: 'protocol_version_created',
+  PROTOCOL_STATUS_CHANGED: 'protocol_status_changed',
+  TRACKING_CREATED: 'tracking_created',
+  CHECKIN_SUBMITTED: 'checkin_submitted',
+  CHECKIN_REVIEWED: 'checkin_reviewed',
+  EXAM_CREATED: 'exam_created',
+  INVENTORY_LOW_STOCK: 'inventory_low_stock',
+  INVENTORY_EXPIRED: 'inventory_expired',
+});

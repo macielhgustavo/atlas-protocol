@@ -647,10 +647,33 @@ Collection: `notifications`
 ```js
 {
   userId: ObjectId,
-  type: String,
+  type:
+    "professional_approved" |
+    "professional_rejected" |
+    "link_requested" |
+    "link_accepted" |
+    "link_rejected" |
+    "link_ended" |
+    "protocol_created" |
+    "protocol_version_created" |
+    "protocol_status_changed" |
+    "tracking_created" |
+    "checkin_submitted" |
+    "checkin_reviewed" |
+    "exam_created" |
+    "inventory_low_stock" |
+    "inventory_expired",
   title: String,
   message: String,
-  entityType: String | null,
+  entityType:
+    "ProfessionalProfile" |
+    "ProfessionalAthleteLink" |
+    "Protocol" |
+    "TrackingRecord" |
+    "CheckIn" |
+    "Exam" |
+    "InventoryItem" |
+    null,
   entityId: ObjectId | null,
   readAt: Date | null,
   archivedAt: Date | null,
@@ -658,12 +681,30 @@ Collection: `notifications`
 }
 ```
 
+Regras:
+
+- `userId` obrigatório, imutável e referência a `User`;
+- `type` obrigatório, imutável e restrito ao enum oficial;
+- `title` obrigatório, trim, 1–160 e imutável;
+- `message` obrigatório, trim, 1–500 e imutável;
+- `entityType` e `entityId` devem estar ambos nulos ou ambos presentes;
+- `entityType` é restrito ao enum oficial e `entityId` não é populado na API;
+- `readAt` e `archivedAt` são anuláveis e representam os estados;
+- somente `createdAt` é gerado automaticamente; não existe `updatedAt`;
+- schema estrito, sem metadata, payload, rota, canal, ator, remetente,
+  prioridade, booleanos duplicados de estado ou `dedupeKey`;
+- nenhum índice único de deduplicação; a origem chama o service apenas após a
+  mutação vencedora.
+
 Índices:
 
 ```js
 { userId: 1, readAt: 1, createdAt: -1 }
 { userId: 1, archivedAt: 1, createdAt: -1 }
 ```
+
+Não existe índice adicional por `type` na V1 porque a API não filtra por tipo.
+Notificações são best-effort, sem fila/outbox ou garantia exactly-once.
 
 ## 16. AuditLog
 

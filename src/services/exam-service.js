@@ -2,6 +2,10 @@ const AUDIT_ACTIONS = require('../constants/audit-actions');
 const AUDIT_ENTITY_TYPES = require('../constants/audit-entity-types');
 const ERROR_CODES = require('../constants/error-codes');
 const LINK_STATUSES = require('../constants/link-statuses');
+const NOTIFICATION_ENTITY_TYPES = require(
+  '../constants/notification-entity-types',
+);
+const NOTIFICATION_TYPES = require('../constants/notification-types');
 const USER_ROLES = require('../constants/user-roles');
 const Exam = require('../models/exam');
 const ProfessionalAthleteLink = require('../models/professional-athlete-link');
@@ -10,6 +14,7 @@ const AppError = require('../utils/app-error');
 const { toExamResponse } = require('../utils/exam-response');
 const { sanitizeOriginalName } = require('../utils/pdf-file');
 const auditService = require('./audit-service');
+const notificationService = require('./notification-service');
 
 function notFoundError() {
   return new AppError(
@@ -123,6 +128,15 @@ async function createExam(requester, input, file) {
     if (storedDocument) cleanup.push(storage.remove(storedDocument.storageKey));
     await Promise.allSettled(cleanup);
     throw error;
+  }
+
+  if (requester.role === USER_ROLES.PROFESSIONAL) {
+    await notificationService.createNotificationFromTemplateSafely({
+      userId: exam.athleteId,
+      type: NOTIFICATION_TYPES.EXAM_CREATED,
+      entityType: NOTIFICATION_ENTITY_TYPES.EXAM,
+      entityId: exam.id,
+    });
   }
 
   return toExamResponse(exam);
