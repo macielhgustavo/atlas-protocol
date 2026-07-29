@@ -209,6 +209,33 @@ Eventos possuem IDs determinísticos e exatamente `id`, `type`, `occurredAt`,
 usa AuditLog como fonte, não gera auditoria e não expõe respostas, notas,
 resultados, medidas, PDFs ou conteúdo clínico completo.
 
+### Estoque simples
+
+```text
+POST  /api/v1/inventory
+GET   /api/v1/inventory
+GET   /api/v1/inventory/:id
+PATCH /api/v1/inventory/:id
+PATCH /api/v1/inventory/:id/archive
+POST  /api/v1/inventory/:id/movements
+GET   /api/v1/inventory/:id/movements
+```
+
+O estoque usa `athleteId` derivado do JWT, sem `ownerId`, `brand`, `batch` ou
+integração automática com tracking. Atleta gerencia somente o próprio estoque;
+profissional aprovado com vínculo ativo possui somente leitura; admin não
+acessa o módulo na V1.
+
+Quantidade positiva na criação gera um movimento inicial. Depois disso,
+quantidade muda apenas por movimentos imutáveis `in`, `out` e `adjustment`;
+ajuste representa o novo valor absoluto. Saídas são atômicas, não permitem
+saldo negativo e são bloqueadas em item vencido. Entradas e ajustes continuam
+permitidos para correção administrativa.
+
+`expired` e `lowStock` são derivados em leitura, sem persistência. O
+arquivamento é lógico e idempotente; não existem DELETE, restore, Notification,
+integração com Dashboard ou eventos de estoque na Timeline desta etapa.
+
 ## Preservação histórica
 
 A V1 evita exclusão física de dados de negócio.
@@ -270,13 +297,12 @@ Rotas públicas previstas:
 
 1. Frontend atleta.
 2. Frontend profissional.
-3. Estoque simples.
-4. Notificações.
-5. Admin.
-6. Seed mínimo.
-7. Deploy frontend.
-8. Testes E2E/QA.
-9. Documentação final e ensaio do TCC.
+3. Notificações.
+4. Admin.
+5. Seed mínimo.
+6. Deploy frontend.
+7. Testes E2E/QA.
+8. Documentação final e ensaio do TCC.
 
 ## Seed de demonstração
 

@@ -574,16 +574,31 @@ Escopo reduzido: não incluir fornecedor, custo, compra, depósito ou ERP.
 
 Validações:
 
-- `quantity >= 0`;
-- `lowStockThreshold >= 0`;
-- nome obrigatório.
+- `athleteId` obrigatório e derivado do JWT;
+- `substanceId` opcional, anulável e, em nova associação, deve apontar para
+  `Substance.active=true`;
+- `name` obrigatório, trim, 1–160;
+- `unit` usa exclusivamente o enum documentado;
+- `quantity`: número finito entre 0 e 1.000.000.000, até três casas decimais;
+- `lowStockThreshold`: anulável, número finito entre 0 e 1.000.000.000, até
+  três casas decimais;
+- `expirationDate` e `archivedAt` anuláveis;
+- `quantity` muda diretamente apenas na criação; depois, somente por
+  movimentação;
+- `expired` e `lowStock` são derivados e não integram o documento;
+- não existem `ownerId`, `brand`, `batch`, fornecedor, custo, status
+  persistido ou recomendação.
 
 Índices:
 
 ```js
 { athleteId: 1, archivedAt: 1 }
 { athleteId: 1, expirationDate: 1 }
+{ athleteId: 1, name: 1 }
 ```
+
+O índice por nome apoia a busca do estoque dentro do escopo do atleta; ele não
+é único.
 
 ## 14. InventoryMovement
 
@@ -605,11 +620,18 @@ Collection: `inventory_movements`
 
 Regras:
 
-- quantidade da movimentação > 0;
-- saída não gera estoque negativo;
+- `in` e `out`: `quantity` é delta finito, positivo, com até três casas;
+- `adjustment`: `quantity` é a nova quantidade absoluta, pode ser zero e
+  possui o mesmo limite máximo e precisão;
+- `previousQuantity` e `resultingQuantity` são calculados pelo backend;
+- `reason` obrigatório, trim, 3–500;
+- saída não gera estoque negativo e usa atualização condicional atômica;
 - movimentação imutável;
-- item vencido respeita bloqueios definidos no domínio;
+- item vencido bloqueia somente `out`;
+- item arquivado bloqueia qualquer nova movimentação;
 - alteração de quantidade ocorre via movimentação, não edição direta.
+- sem `updatedAt`, `relatedTrackingRecordId`, snapshot, dados de substância ou
+  correção retroativa.
 
 Índices:
 

@@ -1392,11 +1392,11 @@ Estoque simples de propriedade do atleta.
 
 ### POST `/inventory`
 
-Atleta.
+Somente atleta. `athleteId` vem do JWT e não é aceito no body.
 
 ```json
 {
-  "substanceId": "ObjectId",
+  "substanceId": "ObjectId|null",
   "name": "Item cadastrado",
   "unit": "unit",
   "quantity": 3,
@@ -1405,31 +1405,94 @@ Atleta.
 }
 ```
 
+Campos permitidos:
+
+- `substanceId`: opcional e anulável; quando informado, deve referenciar
+  Substance existente e ativa;
+- `name`: obrigatório, trim, 1–160;
+- `unit`: `unit|ml|mg|g|capsule|tablet|vial|box`;
+- `quantity`: obrigatório, número finito de 0 a 1.000.000.000, até três casas;
+- `lowStockThreshold`: opcional/anulável, mesmo limite e precisão;
+- `expirationDate`: ISO 8601 opcional/anulável, inclusive data passada.
+
+Strings numéricas não são convertidas. Campos de ownership, quantidade
+derivada, arquivamento, timestamps, `ownerId`, `brand`, `batch`, `status`,
+`expired` e `lowStock` são rejeitados.
+
+`quantity` representa o estado inicial. Quando maior que zero, a criação gera
+também uma movimentação:
+
+```json
+{
+  "type": "adjustment",
+  "quantity": 3,
+  "previousQuantity": 0,
+  "resultingQuantity": 3,
+  "reason": "Estoque inicial."
+}
+```
+
+Quantidade inicial zero não gera movimento. Item, movimento inicial e
+auditorias obrigatórias usam rollback compensatório em caso de falha.
+
 ### GET `/inventory`
 
-- atleta: próprio;
-- profissional: atleta vinculado, somente leitura.
+- atleta: somente itens próprios e não aceita `athleteId`;
+- profissional `approved`: somente leitura, exige `athleteId` de atleta com
+  vínculo `active`;
+- admin: `403 FORBIDDEN`.
 
 Filtros:
 
-- `athleteId` para profissional autorizado;
-- `search`;
-- `expired`;
-- `lowStock`;
-- `archived`;
-- paginação.
+- `athleteId`: obrigatório para profissional e proibido para atleta;
+- `search`: trim, 1–160, somente em `name`, case-insensitive e com regex
+  escapada;
+- `expired=true|false`;
+- `lowStock=true|false`;
+- `archived=true|false`;
+- `page`, padrão 1;
+- `limit`, padrão 20 e máximo 100;
+- `sortBy=name|quantity|expirationDate|createdAt|updatedAt`;
+- `sortOrder=asc|desc`.
+
+O padrão é `archived=false`, `sortBy=createdAt` e `sortOrder=desc`, com `_id`
+na mesma direção para desempate. Não existe `archived=all`.
+
+`expired=true` usa `expirationDate != null && expirationDate < now`;
+`expired=false` usa data nula ou maior/igual a `now`.
+
+`lowStock=true` usa limite não nulo e `quantity <= lowStockThreshold`;
+`lowStock=false` usa limite nulo ou quantidade acima do limite.
+
+O instante `now` é capturado uma vez por requisição.
 
 ### GET `/inventory/:id`
 
+Atleta consulta item próprio. Profissional `approved` consulta item de atleta
+com vínculo `active`. Item fora do escopo retorna `404 RESOURCE_NOT_FOUND`.
+Admin recebe `403 FORBIDDEN`. Itens arquivados continuam consultáveis.
+
 ### PATCH `/inventory/:id`
 
-Atleta dono.
+Somente atleta dono, `application/json`, com ao menos um campo permitido:
 
-Atualiza metadados, nunca quantidade diretamente.
+- `substanceId`;
+- `name`;
+- `unit`;
+- `lowStockThreshold`;
+- `expirationDate`.
+
+`substanceId` pode ser mantido, removido com `null` ou trocado por outra
+Substance ativa. Desativação posterior da Substance não apaga a referência
+histórica do item.
+
+Não aceita `quantity`, ownership, arquivamento, timestamps ou campos derivados.
+Não cria InventoryMovement. Item arquivado retorna
+`422 INVENTORY_ITEM_ARCHIVED`.
 
 ### POST `/inventory/:id/movements`
 
-Atleta dono.
+Somente atleta dono.
 
 ```json
 {
@@ -1439,6 +1502,30 @@ Atleta dono.
 }
 ```
 
+Semântica:
+
+- `in`: quantidade adicionada, estritamente positiva;
+- `out`: quantidade removida, estritamente positiva;
+- `adjustment`: nova quantidade absoluta, maior ou igual a zero.
+
+`quantity` é número finito até 1.000.000.000, com no máximo três casas e sem
+coerção de strings. `reason` é obrigatório, recebe trim e possui 3–500
+caracteres.
+
+Entradas usam incremento atômico. Saídas usam atualização condicional com
+`quantity` suficiente e `archivedAt=null`; saída igual ao saldo é válida.
+Ajustes usam substituição atômica e registram o valor observado antes da
+operação.
+
+Item vencido bloqueia somente `out`; `in` e `adjustment` permanecem
+permitidos. Item arquivado bloqueia todos os movimentos.
+
+Se a criação de InventoryMovement falhar após a alteração do item, o backend
+tenta restaurar o saldo com compare-and-set somente quando a quantidade ainda
+corresponde ao resultado daquela operação. Uma alteração concorrente posterior
+nunca é sobrescrita. A V1 documenta atomicidade limitada entre InventoryItem,
+InventoryMovement e AuditLog e não exige transações ou outbox.
+
 Erros:
 
 - `INVENTORY_INSUFFICIENT`
@@ -1447,11 +1534,78 @@ Erros:
 
 ### GET `/inventory/:id/movements`
 
-Atleta dono ou profissional vinculado em leitura.
+Atleta dono ou profissional `approved` com vínculo `active`, em leitura.
+Admin recebe `403 FORBIDDEN`.
+
+Filtros:
+
+- `type=in|out|adjustment`;
+- `dateFrom` e `dateTo`, aplicados a `createdAt`;
+- `page`, padrão 1;
+- `limit`, padrão 20 e máximo 100;
+- `sortOrder=asc|desc`, padrão `desc`.
+
+`dateFrom > dateTo` retorna `VALIDATION_ERROR`. A ordenação é fixa por
+`createdAt` e `_id`; `sortBy` não é aceito.
 
 ### PATCH `/inventory/:id/archive`
 
-Atleta dono.
+Somente atleta dono. Requer `application/json` e body estritamente vazio:
+
+```json
+{}
+```
+
+A primeira chamada define `archivedAt` por compare-and-set e gera auditoria.
+Chamadas posteriores retornam `200`, preservam o instante original e não
+duplicam auditoria. Movimentações permanecem persistidas e consultáveis.
+
+Não existe restauração.
+
+### Resposta segura do item
+
+```json
+{
+  "id": "ObjectId",
+  "athleteId": "ObjectId",
+  "substanceId": "ObjectId|null",
+  "name": "Item",
+  "unit": "unit",
+  "quantity": 3,
+  "lowStockThreshold": 1,
+  "expirationDate": "ISO|null",
+  "archivedAt": "ISO|null",
+  "lowStock": false,
+  "expired": false,
+  "createdAt": "ISO",
+  "updatedAt": "ISO"
+}
+```
+
+`lowStock` e `expired` são derivados no instante capturado para a resposta e
+não são persistidos. Não são retornados documento Mongoose, `__v`, Substance
+populada, usuário, `ownerId`, `brand`, `batch`, fornecedor, custo ou
+recomendação.
+
+### Resposta segura da movimentação
+
+```json
+{
+  "id": "ObjectId",
+  "inventoryItemId": "ObjectId",
+  "athleteId": "ObjectId",
+  "type": "out",
+  "quantity": 1,
+  "previousQuantity": 3,
+  "resultingQuantity": 2,
+  "reason": "Baixa manual.",
+  "createdBy": "ObjectId",
+  "createdAt": "ISO"
+}
+```
+
+Movimentações não possuem `updatedAt`, não são populadas e não expõem
+snapshot, dados de substância ou `relatedTrackingRecordId`.
 
 Não existe delete físico.
 

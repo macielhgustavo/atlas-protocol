@@ -1403,11 +1403,9 @@ Não inclui:
 
 ```js
 {
-  ownerId: ObjectId,
+  athleteId: ObjectId,
   substanceId: ObjectId | null,
   name: String,
-  brand: String | null,
-  batch: String | null,
   unit: "unit" | "ml" | "mg" | "g" | "capsule" | "tablet" | "vial" | "box",
   quantity: Number,
   lowStockThreshold: Number | null,
@@ -1423,13 +1421,12 @@ Não inclui:
 ```js
 {
   inventoryItemId: ObjectId,
-  ownerId: ObjectId,
+  athleteId: ObjectId,
   type: "in" | "out" | "adjustment",
   quantity: Number,
   previousQuantity: Number,
   resultingQuantity: Number,
   reason: String,
-  relatedTrackingRecordId: ObjectId | null,
   createdBy: ObjectId,
   createdAt: Date
 }
@@ -1439,12 +1436,49 @@ Movimentações são imutáveis.
 
 ### 19.4 Regras
 
-- quantidade não pode ser negativa;
-- saída não pode gerar estoque negativo;
-- quantidade muda somente por movimentação;
-- item vencido gera alerta;
+- `athleteId` vem do JWT para atletas; profissional aprovado possui somente
+  leitura de atleta com vínculo `active`; admin não acessa o estoque da V1;
+- não existem `ownerId`, `brand`, `batch` ou `relatedTrackingRecordId`;
+- nome possui 1–160 caracteres após trim e unidade usa whitelist estrita;
+- quantidades são números finitos de zero a 1.000.000.000, até três casas
+  decimais e sem coerção de strings;
+- `quantity` é obrigatória na criação; valor positivo cria movimento inicial
+  `adjustment` de zero para o saldo com razão `Estoque inicial.`;
+- após a criação, quantidade muda somente por movimentação;
+- `in` e `out` usam delta positivo; `adjustment` usa nova quantidade absoluta
+  e aceita zero;
+- saída usa atualização atômica condicional e não gera estoque negativo;
+- entradas são incrementos atômicos; ajustes usam substituição atômica;
+- item vencido bloqueia somente `out`, mantendo `in`, `adjustment`, leitura,
+  metadados e arquivamento;
+- `expired` e `lowStock` são calculados em leitura e não persistidos;
+- item arquivado permanece consultável, não aceita novas mutações e não possui
+  restauração;
+- movimentos são imutáveis e não possuem PATCH ou DELETE;
+- criação usa rollback compensatório para item, movimento inicial e auditoria;
+- falha de movimento comum tenta compensar saldo por compare-and-set, sem
+  sobrescrever uma operação concorrente posterior;
+- a atomicidade entre item, movimento e AuditLog é limitada e explícita na V1;
+- listagem suporta busca por nome, estados derivados, arquivamento, paginação e
+  ordenação em whitelist;
 - não recomendar uso, compra ou substituição;
 - arquivamento lógico preserva movimentações.
+
+### 19.5 Endpoints
+
+```text
+POST  /api/v1/inventory
+GET   /api/v1/inventory
+GET   /api/v1/inventory/:id
+PATCH /api/v1/inventory/:id
+PATCH /api/v1/inventory/:id/archive
+POST  /api/v1/inventory/:id/movements
+GET   /api/v1/inventory/:id/movements
+```
+
+Não existem DELETE, restore, criação ou movimentação por profissional,
+integração automática com tracking, Notification, Dashboard ou Timeline nesta
+etapa.
 
 ---
 
@@ -1634,17 +1668,27 @@ CHECKIN_SUBMITTED
 CHECKIN_REVIEWED
 ```
 
-### 22.7 Ações futuras
+### 22.7 Ações de estoque
 
 ```text
 INVENTORY_UPDATED
 INVENTORY_MOVEMENT_CREATED
+```
+
+`INVENTORY_UPDATED` usa metadata operacional segura (`created`,
+`metadata_updated` ou `archived`) e somente nomes de campos alterados.
+`INVENTORY_MOVEMENT_CREATED` registra apenas atleta, item e tipo, sem
+quantidades ou motivo completo.
+
+### 22.8 Ações futuras
+
+```text
 USER_ACTIVATED
 ```
 
 Os nomes definitivos devem permanecer centralizados em constantes.
 
-### 22.8 Endpoint
+### 22.9 Endpoint
 
 ```text
 GET /api/v1/audit-logs
@@ -1663,7 +1707,7 @@ page
 limit
 ```
 
-### 22.9 Consistência
+### 22.10 Consistência
 
 As gravações de auditoria são aguardadas e erros críticos não são ignorados. A V1 não introduziu transactions ou outbox em todos os fluxos. Em algumas operações, a mutação pode persistir antes de uma falha de auditoria; esse limite técnico deve ser conhecido e não permite usar AuditLog como única fonte de verdade de um estado funcional.
 
@@ -2201,6 +2245,7 @@ Dashboard API unificado V1              concluído
 Exames + PDF seguro V1                  concluído
 Evolução física V1                      concluído
 Timeline histórica V1                   concluído
+Estoque e movimentações V1              concluído
 ```
 
 ### 29.2 Próxima etapa
@@ -2220,7 +2265,6 @@ feat/tracking-checkins-v1
 ```text
 Frontend atleta funcional               pendente
 Frontend profissional funcional         pendente
-Estoque                                 pendente
 Notificações                            pendente
 Admin frontend final                    pendente
 Seed mínimo                             pendente
@@ -2271,6 +2315,14 @@ Timeline histórica:
 lint sem erros
 ```
 
+Estoque e movimentações:
+
+```text
+47 suítes
+648 testes
+lint sem erros
+```
+
 Os números atuais do repositório devem ser confirmados novamente depois dos
 merges e antes de registrar novos valores neste documento.
 
@@ -2282,15 +2334,14 @@ Ordem recomendada a partir do estado atual:
 
 1. conectar frontend do atleta;
 2. conectar frontend do profissional;
-3. implementar estoque;
-4. implementar notificações internas;
-5. finalizar telas administrativas;
-6. criar seed mínimo;
-7. configurar armazenamento persistente de arquivos;
-8. publicar frontend;
-9. executar E2E, segurança e QA;
-10. atualizar README e documentação final;
-11. ensaiar demonstração do TCC.
+3. implementar notificações internas;
+4. finalizar telas administrativas;
+5. criar seed mínimo;
+6. configurar armazenamento persistente de arquivos;
+7. publicar frontend;
+8. executar E2E, segurança e QA;
+9. atualizar README e documentação final;
+10. ensaiar demonstração do TCC.
 
 ---
 
@@ -2465,7 +2516,7 @@ Os documentos antigos em DOCX permanecem úteis para apresentação e visão aca
 - [x] dashboard;
 - [x] exames;
 - [x] evolução e timeline;
-- [ ] estoque;
+- [x] estoque;
 - [ ] notificações;
 - [ ] seed final;
 - [ ] E2E e QA.

@@ -219,6 +219,19 @@ para suas funções administrativas, sem acesso excepcional à timeline pessoal.
 
 Profissional possui leitura apenas do estoque de atleta com vínculo `active`.
 
+Condições:
+
+- atleta deriva `athleteId` do JWT e não pode informar outro atleta;
+- profissional deve estar `approved`, informar `athleteId` na listagem e
+  manter vínculo `active` no instante da consulta;
+- vínculo encerrado remove imediatamente a leitura profissional;
+- profissional nunca cria, atualiza, movimenta ou arquiva estoque;
+- admin recebe `FORBIDDEN` em todas as rotas de estoque da V1;
+- item fora do ownership ou vínculo responde `RESOURCE_NOT_FOUND`;
+- item arquivado continua consultável, mas não aceita mutação;
+- somente atleta dono registra movimentações e a quantidade não é alterada
+  diretamente por PATCH.
+
 ## 12. Notificações
 
 | Ação | Admin | Profissional | Atleta |

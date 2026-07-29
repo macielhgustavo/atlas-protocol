@@ -733,13 +733,28 @@ O estoque existe para cumprir o escopo do TCC sem virar ERP.
 
 Estoque pertence ao atleta.
 
-Atleta gerencia o próprio estoque.
+Atleta cria, consulta, atualiza metadados, movimenta e arquiva somente itens
+próprios. `athleteId` é sempre derivado do usuário autenticado e nunca é
+aceito do atleta no payload ou na query.
 
-Profissional `approved` com vínculo `active` possui leitura do estoque do atleta.
+Profissional `approved` com vínculo `active` possui somente leitura do estoque
+e das movimentações do atleta. Para listagem, `athleteId` é obrigatório.
+Recurso inexistente ou fora do vínculo retorna `RESOURCE_NOT_FOUND`.
+
+Admin não possui acesso operacional ao estoque na V1.
 
 ### DR-048 — Quantidade
 
-Quantidade nunca pode ficar negativa.
+`quantity` e `lowStockThreshold` aceitam somente números finitos entre zero e
+1.000.000.000, com no máximo três casas decimais e sem coerção de strings.
+
+Na criação, `quantity` é obrigatória e representa o estado inicial. Quando
+maior que zero, o backend cria também um movimento inicial `adjustment`, de
+zero para a quantidade informada, com motivo administrativo fixo. Quantidade
+zero não cria movimento vazio.
+
+Após a criação, a quantidade muda somente por movimentação e nunca pode ficar
+negativa. `PATCH /inventory/:id` não aceita `quantity`.
 
 ### DR-049 — Movimentações
 
@@ -749,23 +764,47 @@ Quantidade muda por movimentação:
 - `out`
 - `adjustment`
 
-Movimentações são imutáveis.
+Em `in` e `out`, `quantity` é um delta estritamente positivo. Em
+`adjustment`, `quantity` é a nova quantidade absoluta e pode ser zero.
+
+Toda movimentação exige `reason` normalizado entre 3 e 500 caracteres, registra
+as quantidades anterior e resultante e é imutável. Não existem edição,
+exclusão, restauração ou correção retroativa de movimentação na V1.
+
+Entradas usam incremento atômico. Saídas usam atualização condicional com
+quantidade suficiente e item não arquivado. Ajustes usam substituição atômica
+e comportamento last-write-wins em concorrência.
+
+Item e movimento são gravações separadas. Se a criação do movimento falhar, o
+backend tenta compensar a quantidade por compare-and-set, somente quando ela
+ainda corresponde ao resultado daquela operação. Se outra movimentação já
+alterou o item, a compensação não sobrescreve o estado posterior e a operação
+propaga `INTERNAL_ERROR`. Essa limitação de atomicidade é explícita na V1.
 
 ### DR-050 — Estoque insuficiente
 
-Saída maior que quantidade disponível é bloqueada.
+Saída maior que quantidade disponível é bloqueada atomicamente, sem criar
+movimento, alterar o item ou registrar auditoria. Saída igual à quantidade
+disponível é válida e resulta em zero.
 
 Erro de domínio: `INVENTORY_INSUFFICIENT`.
 
 ### DR-051 — Validade
 
-Item vencido deve gerar estado/alerta e não pode ser usado em operação futura que o domínio marque como utilização.
+`expired` é derivado quando `expirationDate` existe e é anterior ao instante
+capturado para a requisição. Datas passadas podem ser cadastradas ou
+corrigidas, e o estado não é persistido.
+
+Item vencido bloqueia somente movimento `out`, pois ele representa
+utilização/baixa. O item ainda permite `in`, `adjustment`, atualização de
+metadados, arquivamento e leitura.
 
 Erro de domínio quando aplicável: `INVENTORY_ITEM_EXPIRED`.
 
 ### DR-052 — Estoque baixo
 
-Quando `quantity <= lowStockThreshold`, o item é considerado baixo para alertas e dashboard.
+`lowStock` é derivado quando `lowStockThreshold` existe e
+`quantity <= lowStockThreshold`. O estado não é persistido.
 
 O sistema não recomenda compra, dose ou substituição.
 
@@ -784,7 +823,18 @@ Fora da V1:
 
 Item de estoque não é excluído fisicamente.
 
-Pode ser arquivado, mantendo movimentações históricas.
+Atleta dono pode arquivá-lo, mantendo item e movimentações históricas. A
+operação é idempotente e usa compare-and-set em `archivedAt=null`: somente a
+primeira chamada define `archivedAt` e gera auditoria.
+
+Item arquivado continua consultável e suas movimentações continuam legíveis,
+mas não aceita atualização de metadados nem novos movimentos. Não existe
+restauração na V1. O erro operacional é `INVENTORY_ITEM_ARCHIVED`.
+
+Criação do item, movimento inicial quando aplicável e auditorias obrigatórias
+usam rollback compensatório para não deixar estado parcial. Em movimentações
+comuns, a atomicidade limitada entre item, movimento e AuditLog permanece
+documentada; a V1 não exige replica set, transação distribuída ou outbox.
 
 ## 11. Notificações
 
