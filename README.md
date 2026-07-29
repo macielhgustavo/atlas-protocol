@@ -191,8 +191,23 @@ Admin não acessa o módulo na V1.
 Os registros são descritivos, aceitam peso, percentual de gordura, medidas e
 observações, sem cálculos, classificações ou recomendações. Atualizações de
 medidas usam merge controlado, e o arquivamento é idempotente. Não existem
-DELETE, restauração ou Timeline nesta implementação; a timeline permanece um
-módulo futuro separado.
+DELETE ou restauração.
+
+### Timeline histórica
+
+```text
+GET /api/v1/history
+```
+
+Timeline paginada e somente leitura, derivada de versões e status de
+protocolos, tracking finalizado, envio/revisão de check-ins, exames e evolução.
+Atleta acessa somente o próprio histórico; profissional aprovado informa
+`athleteId` e precisa manter vínculo ativo. Admin não acessa a Timeline V1.
+
+Eventos possuem IDs determinísticos e exatamente `id`, `type`, `occurredAt`,
+`title`, `summary` e `entityId`. A consulta não possui model/collection, não
+usa AuditLog como fonte, não gera auditoria e não expõe respostas, notas,
+resultados, medidas, PDFs ou conteúdo clínico completo.
 
 ## Preservação histórica
 
@@ -255,15 +270,13 @@ Rotas públicas previstas:
 
 1. Frontend atleta.
 2. Frontend profissional.
-3. Exames + PDF.
-4. Evolução + timeline.
-5. Estoque simples.
-6. Notificações.
-7. Admin.
-8. Seed mínimo.
-9. Deploy frontend.
-10. Testes E2E/QA.
-11. Documentação final e ensaio do TCC.
+3. Estoque simples.
+4. Notificações.
+5. Admin.
+6. Seed mínimo.
+7. Deploy frontend.
+8. Testes E2E/QA.
+9. Documentação final e ensaio do TCC.
 
 ## Seed de demonstração
 

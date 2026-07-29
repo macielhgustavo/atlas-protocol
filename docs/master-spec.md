@@ -1336,18 +1336,38 @@ Regras:
 
 ### 18.2 Timeline histórica
 
-A tela de histórico agrega eventos de diferentes módulos em ordem cronológica:
+A tela de histórico expõe somente `GET /api/v1/history` e agrega, em ordem
+`occurredAt desc` e `id desc`:
 
-- criação e versões de protocolos;
-- mudanças de status;
-- tracking records;
+- versões de protocolo;
+- entradas não iniciais de `Protocol.statusHistory`;
+- trackings `completed`, `missed` ou `cancelled`;
 - envio e revisão de check-ins;
-- exames adicionados;
-- registros de evolução;
-- eventos relevantes de vínculo;
-- movimentações ou alertas importantes quando aplicável.
+- exames, inclusive arquivados;
+- registros de evolução, inclusive arquivados.
 
-A timeline não substitui os registros originais. Cada item deve manter referência para a entidade de origem.
+Tipos oficiais:
+
+```text
+protocol_version
+protocol_status
+tracking
+checkin
+exam
+progress
+```
+
+Atleta acessa somente o próprio histórico sem enviar `athleteId`. Profissional
+`approved` informa `athleteId` e precisa de vínculo `active`. Admin não acessa
+a timeline pessoal na V1.
+
+Cada evento expõe exatamente `id`, `type`, `occurredAt`, `title`, `summary` e
+`entityId`, com identificador determinístico. A timeline não substitui nem
+altera registros originais, não cria AuditLog e não possui model ou collection.
+
+Links, Inventory, InventoryMovement, Notifications e AuditLog não são fontes
+da History V1. A resposta é descritiva e não expõe texto livre sensível,
+conteúdo clínico, atores, ownership, documentos ou snapshots completos.
 
 ---
 
@@ -1589,6 +1609,10 @@ USER_UNBLOCKED
 PROTOCOL_CREATED
 PROTOCOL_VERSION_CREATED
 PROTOCOL_STATUS_CHANGED
+EXAM_CREATED
+EXAM_ARCHIVED
+PROGRESS_CREATED
+PROGRESS_ARCHIVED
 ```
 
 ### 22.5 Ações de Links V2
@@ -1613,10 +1637,6 @@ CHECKIN_REVIEWED
 ### 22.7 Ações futuras
 
 ```text
-EXAM_CREATED
-EXAM_ARCHIVED
-PROGRESS_CREATED
-PROGRESS_ARCHIVED
 INVENTORY_UPDATED
 INVENTORY_MOVEMENT_CREATED
 USER_ACTIVATED
@@ -1842,8 +1862,7 @@ PATCH /progress/:id/archive
 GET   /history
 ```
 
-Nesta etapa, somente os cinco endpoints de `/progress` são implementados.
-`GET /history` e a timeline permanecem fora da branch Physical Progress V1.
+`GET /history` é uma projeção derivada paginada, sem operações de escrita.
 
 ### 25.9 Estoque
 
@@ -2179,6 +2198,9 @@ Links V2 por e-mail + aceite            concluído
 Tracking Records V1                     concluído
 Check-ins V1                            concluído
 Dashboard API unificado V1              concluído
+Exames + PDF seguro V1                  concluído
+Evolução física V1                      concluído
+Timeline histórica V1                   concluído
 ```
 
 ### 29.2 Próxima etapa
@@ -2198,8 +2220,6 @@ feat/tracking-checkins-v1
 ```text
 Frontend atleta funcional               pendente
 Frontend profissional funcional         pendente
-Exames + PDF                            pendente
-Evolução + timeline                     pendente
 Estoque                                 pendente
 Notificações                            pendente
 Admin frontend final                    pendente
@@ -2243,6 +2263,14 @@ Dashboard API unificado:
 lint sem erros
 ```
 
+Timeline histórica:
+
+```text
+42 suítes
+563 testes
+lint sem erros
+```
+
 Os números atuais do repositório devem ser confirmados novamente depois dos
 merges e antes de registrar novos valores neste documento.
 
@@ -2254,17 +2282,15 @@ Ordem recomendada a partir do estado atual:
 
 1. conectar frontend do atleta;
 2. conectar frontend do profissional;
-3. implementar exames e PDF;
-4. implementar evolução e timeline;
-5. implementar estoque;
-6. implementar notificações internas;
-7. finalizar telas administrativas;
-8. criar seed mínimo;
-9. configurar armazenamento persistente de arquivos;
-10. publicar frontend;
-11. executar E2E, segurança e QA;
-12. atualizar README e documentação final;
-13. ensaiar demonstração do TCC.
+3. implementar estoque;
+4. implementar notificações internas;
+5. finalizar telas administrativas;
+6. criar seed mínimo;
+7. configurar armazenamento persistente de arquivos;
+8. publicar frontend;
+9. executar E2E, segurança e QA;
+10. atualizar README e documentação final;
+11. ensaiar demonstração do TCC.
 
 ---
 
@@ -2437,8 +2463,8 @@ Os documentos antigos em DOCX permanecem úteis para apresentação e visão aca
 - [x] tracking;
 - [x] check-ins;
 - [x] dashboard;
-- [ ] exames;
-- [ ] evolução e timeline;
+- [x] exames;
+- [x] evolução e timeline;
 - [ ] estoque;
 - [ ] notificações;
 - [ ] seed final;

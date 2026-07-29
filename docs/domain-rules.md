@@ -693,17 +693,37 @@ a regra de conteúdo mínimo continua obrigatória.
 
 ### DR-046 — Timeline agregada
 
-A timeline histórica pode agregar eventos como:
+A timeline histórica é uma projeção autenticada, paginada, somente leitura e
+derivada diretamente das entidades-fonte. Não possui collection, snapshots
+persistidos, cache materializado nem usa `AuditLog` como fonte.
 
-- criação e versões de protocolo;
-- mudanças de status relevantes;
-- check-ins enviados/revisados;
-- trackings;
-- exames;
-- registros de evolução.
+Fontes e eventos da History V1:
 
-A timeline é uma visão derivada; não duplica nem altera os registros-fonte.
-Sua implementação não faz parte do módulo Physical Progress V1.
+- cada `ProtocolVersion`, incluindo a versão 1, gera `protocol_version`;
+- cada entrada de `Protocol.statusHistory`, exceto a inicial
+  `null -> draft`, gera `protocol_status`;
+- `TrackingRecord` finalizado gera `tracking`; `scheduled` não aparece;
+- envio e revisão de `CheckIn` geram eventos `checkin` distintos;
+- cada `Exam` gera `exam`;
+- cada `PhysicalProgress` gera `progress`.
+
+Exames e registros de evolução arquivados continuam presentes. Links,
+Inventory, Notifications, AuditLog e demais módulos não são fontes desta
+primeira versão.
+
+Atleta consulta somente a própria timeline e não informa `athleteId`.
+Profissional `approved` deve informar `athleteId` e possuir vínculo `active`
+atual; inexistência ou ausência de vínculo responde `RESOURCE_NOT_FOUND`.
+Admin não acessa a Timeline V1.
+
+Eventos são ordenados de forma fixa por `occurredAt desc` e `id desc`. Seus
+identificadores são determinísticos e derivados da entidade ou transição de
+origem. A resposta expõe somente `id`, `type`, `occurredAt`, `title`,
+`summary` e `entityId`.
+
+A timeline não duplica nem altera os registros-fonte, não gera auditoria de
+leitura e não interpreta dados clínicos. Títulos possuem até 160 caracteres e
+resumos até 300.
 
 ## 10. Estoque simples
 

@@ -188,7 +188,7 @@ Condições:
 | Criar registro | N | V | P |
 | Atualizar registro permitido | N | V | P |
 | Arquivar | N | V | P |
-| Ver timeline histórica | C | V | P |
+| Ver timeline histórica | N | V | P |
 | Excluir fisicamente | N | N | N |
 
 Em evolução física, `V` exige profissional `approved` e vínculo `active`.
@@ -198,7 +198,11 @@ Atualização e arquivamento pelo profissional alcançam somente registros cujo
 qualquer registro próprio. Admin recebe `FORBIDDEN` em todas as rotas
 `/progress`; acesso administrativo excepcional está fora da V1.
 
-Timeline é somente leitura e derivada dos registros-fonte.
+Timeline é somente leitura e derivada dos registros-fonte. Atleta consulta
+somente a própria timeline e não envia `athleteId`. Profissional precisa estar
+`approved`, informar o atleta e manter vínculo `active`; recursos fora desse
+escopo retornam `RESOURCE_NOT_FOUND`. Admin recebe `FORBIDDEN` e usa AuditLog
+para suas funções administrativas, sem acesso excepcional à timeline pessoal.
 
 ## 11. Estoque simples
 
@@ -258,7 +262,7 @@ Regras:
 | Ação | Admin | Profissional | Atleta |
 |---|---:|---:|---:|
 | Consultar logs gerais | T | N | N |
-| Consultar evento exposto em histórico próprio | C | C | C |
+| Usar AuditLog como fonte da timeline | N | N | N |
 | Criar log manualmente | N | N | N |
 | Alterar log | N | N | N |
 | Excluir log | N | N | N |

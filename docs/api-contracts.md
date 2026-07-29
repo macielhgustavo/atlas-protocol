@@ -1295,15 +1295,31 @@ calculados, classificações ou recomendações.
 
 ### GET `/history`
 
-Timeline agregada.
+Timeline autenticada, paginada, somente leitura e derivada. Admin recebe
+`403 FORBIDDEN`.
 
 Filtros:
 
-- `athleteId` quando permitido;
-- `type` opcional;
-- `dateFrom`;
-- `dateTo`;
-- paginação.
+- `athleteId`: proibido para atleta e obrigatório para profissional;
+- `type=protocol_version|protocol_status|tracking|checkin|exam|progress`;
+- `dateFrom` e `dateTo`, aplicados de forma inclusiva a `occurredAt`;
+- `page`, padrão 1;
+- `limit`, padrão 20 e máximo 100.
+
+Profissional deve estar `approved` e possuir vínculo `active` atual com o
+atleta informado. Atleta inexistente ou fora do vínculo retorna
+`404 RESOURCE_NOT_FOUND`, sem revelar sua existência.
+
+Não são aceitos `sortBy`, `sortOrder`, `status`, `entityId`,
+`professionalId`, `userId`, `role`, `archived` ou campos desconhecidos.
+`dateFrom` posterior a `dateTo` retorna `VALIDATION_ERROR`.
+
+A ordenação é fixa:
+
+```text
+occurredAt desc
+id desc
+```
 
 Exemplo:
 
@@ -1315,8 +1331,8 @@ Exemplo:
       "id": "event-id",
       "type": "protocol_version",
       "occurredAt": "2026-08-01T12:00:00.000Z",
-      "title": "Nova versão de protocolo",
-      "summary": "Versão 2 registrada.",
+      "title": "Versão de protocolo registrada",
+      "summary": "Versão 2 do protocolo Protocolo de acompanhamento registrada.",
       "entityId": "ObjectId"
     }
   ],
@@ -1329,7 +1345,46 @@ Exemplo:
 }
 ```
 
-A timeline é leitura derivada e não altera entidades-fonte.
+Cada item possui exatamente `id`, `type`, `occurredAt`, `title`, `summary` e
+`entityId`. IDs são estáveis:
+
+```text
+protocol_version:<protocolVersionId>
+protocol_status:<protocolId>:<statusHistoryIndex>
+tracking:<trackingRecordId>
+checkin:<checkInId>:submitted
+checkin:<checkInId>:reviewed
+exam:<examId>
+progress:<physicalProgressId>
+```
+
+Semântica de `occurredAt`:
+
+- `protocol_version`: `ProtocolVersion.createdAt`;
+- `protocol_status`: `statusHistory.changedAt`, sem `null -> draft`;
+- `tracking completed`: `completedAt`, com fallback documentado para
+  `updatedAt` somente em dado legado inconsistente;
+- `tracking missed|cancelled`: `updatedAt`;
+- `checkin`: `submittedAt` ou `reviewedAt`, conforme o evento;
+- `exam`: `examDate`;
+- `progress`: `referenceDate`.
+
+Tracking `scheduled` e CheckIn somente `pending` não geram evento. CheckIn
+revisado gera tanto o evento de envio quanto o de revisão. Exames e evoluções
+arquivados continuam presentes.
+
+ProtocolVersion, `Protocol.statusHistory`, TrackingRecord, CheckIn, Exam e
+PhysicalProgress são as únicas fontes. Links, Inventory, Notifications,
+AuditLog, verificação profissional, usuários, substâncias e dashboard não são
+fontes da History V1.
+
+Não são retornados ownership, atores, respostas, comentários, notas,
+resultados, medidas, PDFs, documentos, itens de protocolo, instruções,
+metadata, usuários ou qualquer conteúdo clínico completo. `title` possui no
+máximo 160 caracteres e `summary`, 300.
+
+A timeline não altera entidades-fonte, não cria AuditLog e não possui POST,
+PATCH ou DELETE.
 
 ## 16. Inventory
 

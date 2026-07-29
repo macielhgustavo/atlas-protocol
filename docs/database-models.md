@@ -520,23 +520,26 @@ são permitidos.
 
 ## 12. History/Timeline
 
-Não precisa de collection própria na V1.
+Não possui model ou collection própria na V1.
 
 A timeline é uma projeção agregada derivada de:
 
-- Protocol/ProtocolVersion;
-- TrackingRecord;
-- CheckIn;
-- Exam;
-- PhysicalProgress;
-- eventos relevantes auditáveis quando apropriado.
+- `ProtocolVersion`, com escopo obtido em `Protocol.athleteId`;
+- entradas não iniciais de `Protocol.statusHistory`;
+- `TrackingRecord` em estado final;
+- eventos de envio e revisão de `CheckIn`;
+- `Exam`, inclusive arquivado;
+- `PhysicalProgress`, inclusive arquivado.
 
-Formato sugerido de resposta:
+Não deriva de AuditLog, Links, Inventory, InventoryMovement, Notifications,
+ProfessionalProfile, User, Substance ou Dashboard.
+
+Formato obrigatório de resposta:
 
 ```js
 {
   id: String,
-  type: "protocol_version" | "tracking" | "checkin" | "exam" | "progress",
+  type: "protocol_version" | "protocol_status" | "tracking" | "checkin" | "exam" | "progress",
   occurredAt: Date,
   title: String,
   summary: String,
@@ -544,7 +547,9 @@ Formato sugerido de resposta:
 }
 ```
 
-Nenhum dado-fonte é alterado pela timeline.
+`id` é determinístico e não representa novo ObjectId persistido. A projeção
+não contém campos adicionais por tipo. Nenhum dado-fonte é alterado e a
+consulta não cria AuditLog.
 
 ## 13. InventoryItem
 
