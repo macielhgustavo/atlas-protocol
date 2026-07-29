@@ -576,16 +576,38 @@ Atleta pode cadastrar exame próprio.
 
 Profissional `approved` com vínculo `active` pode cadastrar exame do atleta vinculado.
 
+Na criação pelo atleta:
+
+- `athleteId` e `createdBy` são derivados do usuário autenticado;
+- `professionalId=null`;
+- o atleta não escolhe outro atleta ou profissional.
+
+Na criação pelo profissional:
+
+- `athleteId` identifica atleta com vínculo `active`;
+- `professionalId` e `createdBy` são derivados do usuário autenticado.
+
+Admin não possui acesso operacional a exames na V1.
+
 ### DR-039 — PDF
 
 A V1 suporta PDF de exame.
 
 O arquivo:
 
-- é validado por tipo e tamanho;
+- é opcional;
+- é validado por MIME `application/pdf`, extensão `.pdf`, tamanho configurado
+  e assinatura `%PDF-` exatamente no início do buffer;
 - é armazenado via serviço de storage;
 - tem URL/metadados persistidos;
+- não possui binário persistido no MongoDB;
+- não tem `storageKey`, URL privada, caminho ou buffer expostos nas respostas;
+- não pode ser substituído ou removido pelo `PATCH` de metadados;
+- não possui endpoint de download ou visualização na V1;
 - não é interpretado automaticamente.
+
+MongoDB e storage não compartilham transação distribuída. Falhas após o
+armazenamento usam rollback compensatório para remover o arquivo órfão.
 
 ### DR-040 — Resultados estruturados
 
@@ -593,11 +615,32 @@ Resultados estruturados são opcionais e informativos.
 
 O sistema não classifica como normal, anormal, seguro ou perigoso.
 
+Limites:
+
+- até 100 resultados;
+- `marker` e `value`: strings obrigatórias de 1 a 160 caracteres;
+- `unit`: string opcional de 1 a 80 caracteres;
+- `referenceRange`: string opcional de 1 a 240 caracteres;
+- somente as quatro propriedades previstas são aceitas;
+- não são aceitos objetos ou arrays aninhados, chaves perigosas nem valores
+  não textuais.
+
 ### DR-041 — Arquivamento
 
 Exame não é excluído fisicamente.
 
 Pode ser arquivado quando necessário, preservando histórico e auditoria.
+
+Atleta arquiva exame próprio. Profissional somente arquiva exame do qual é o
+`professionalId` responsável e enquanto o vínculo permanece `active`. Admin
+não arquiva exame na V1.
+
+O arquivamento recebe payload vazio, é idempotente e usa atualização
+condicional: apenas a primeira requisição define `archivedAt` e gera
+`EXAM_ARCHIVED`; repetições retornam o estado já arquivado sem nova auditoria.
+
+Exame arquivado não aceita atualização de metadados e não possui restauração
+na V1.
 
 ## 9. Evolução física e timeline
 

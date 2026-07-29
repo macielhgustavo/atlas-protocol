@@ -17,6 +17,11 @@ const envSchema = Joi.object({
     .min(1024)
     .max(50 * 1024 * 1024)
     .default(5 * 1024 * 1024),
+  EXAM_DOCUMENT_MAX_BYTES: Joi.number()
+    .integer()
+    .min(1024)
+    .max(50 * 1024 * 1024)
+    .default(10 * 1024 * 1024),
   STORAGE_LOCAL_ROOT: Joi.string().trim().min(1).default('.storage'),
 }).unknown(true);
 
@@ -38,5 +43,6 @@ module.exports = Object.freeze({
   jwtExpiresIn: value.JWT_EXPIRES_IN,
   bcryptSaltRounds: value.BCRYPT_SALT_ROUNDS,
   professionalDocumentMaxBytes: value.PROFESSIONAL_DOCUMENT_MAX_BYTES,
+  examDocumentMaxBytes: value.EXAM_DOCUMENT_MAX_BYTES,
   storageLocalRoot: value.STORAGE_LOCAL_ROOT,
 });

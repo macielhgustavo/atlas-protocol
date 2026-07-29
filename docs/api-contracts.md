@@ -1032,9 +1032,11 @@ Não existe delete físico.
 
 ### POST `/exams`
 
-Atleta próprio ou profissional vinculado.
+Atleta próprio ou profissional `approved` com vínculo `active`. Admin recebe
+`403 FORBIDDEN`.
 
-Pode aceitar `multipart/form-data` para suportar PDF.
+Aceita `application/json` sem arquivo ou `multipart/form-data` com um PDF
+opcional no campo `document`.
 
 Campos:
 
@@ -1063,6 +1065,46 @@ Exemplo de `results`:
 
 O backend não interpreta resultados.
 
+Para atleta, `athleteId` não é aceito e vem do JWT; `professionalId=null`.
+Para profissional, `athleteId` é obrigatório, enquanto `professionalId` e
+`createdBy` vêm do JWT.
+
+Limites:
+
+- `title`: obrigatório, trim, 1–160;
+- `laboratory`: opcional, trim, 1–160; vazio vira `null`;
+- `notes`: opcional, trim, 1–2000; vazio vira `null`;
+- `results`: opcional, default `[]`, máximo 100;
+- `marker` e `value`: obrigatórios, trim, 1–160;
+- `unit`: opcional, trim, 1–80; vazio vira `null`;
+- `referenceRange`: opcional, trim, 1–240; vazio vira `null`.
+
+Cada resultado aceita exclusivamente `marker`, `value`, `unit` e
+`referenceRange`, todos textuais. Objetos/arrays aninhados, propriedades
+desconhecidas e chaves perigosas são rejeitados.
+
+Em multipart, `results` é um único campo contendo JSON serializado. JSON
+inválido, valor que não seja array ou campos repetidos retornam
+`VALIDATION_ERROR`.
+
+O PDF deve possuir MIME `application/pdf`, extensão `.pdf`, respeitar o limite
+configurado e começar exatamente com `%PDF-`. Assinatura encontrada somente
+após bytes prefixados é inválida.
+
+Response `201` retorna o exame seguro. Quando existe documento:
+
+```json
+{
+  "document": {
+    "originalName": "exame.pdf",
+    "mimeType": "application/pdf",
+    "sizeBytes": 12345
+  }
+}
+```
+
+Nunca retorna `storageKey`, URL privada, caminho, buffer ou nome interno.
+
 ### GET `/exams`
 
 Filtros:
@@ -1072,18 +1114,59 @@ Filtros:
 - `dateTo`
 - `archived`
 - paginação
+- `sortBy=examDate|createdAt`
+- `sortOrder=asc|desc`
+
+Ordenação padrão: `sortBy=examDate&sortOrder=desc`, com `_id` na mesma
+direção para desempate.
+
+`archived` omitido ou `false` retorna somente exames ativos; `true` retorna
+somente arquivados. Não existe `archived=all`.
+
+Atleta lista somente próprios. Profissional `approved` lista somente atletas
+com vínculo `active`; `athleteId` não amplia o escopo. Admin recebe
+`403 FORBIDDEN`.
 
 ### GET `/exams/:id`
 
+Atleta consulta exame próprio. Profissional `approved` consulta exame de
+atleta com vínculo `active`, inclusive quando o exame foi criado pelo atleta.
+Recurso fora do escopo retorna `RESOURCE_NOT_FOUND`. Admin recebe
+`403 FORBIDDEN`.
+
 ### PATCH `/exams/:id`
 
-Atualiza metadados permitidos e, se previsto, substitui documento preservando auditoria.
+Aceita somente `application/json` e atualiza apenas `title`, `examDate`,
+`laboratory`, `notes` e `results`.
+
+Atleta atualiza exame próprio não arquivado. Profissional somente atualiza
+exame não arquivado no qual é o `professionalId` responsável e enquanto o
+vínculo permanece `active`. Admin recebe `403 FORBIDDEN`.
+
+Não aceita `athleteId`, `professionalId`, `createdBy`, `archivedAt`,
+`document`, `storageKey`, `url`, `createdAt` ou `updatedAt`.
+
+Não substitui nem remove PDF. Atualização de metadados não gera AuditLog na V1.
 
 ### PATCH `/exams/:id/archive`
 
-Arquiva logicamente.
+Aceita somente `application/json` com payload obrigatório vazio:
 
-Não existe delete físico.
+```json
+{}
+```
+
+Atleta arquiva exame próprio. Profissional somente arquiva quando é o
+responsável registrado e mantém vínculo `active`. Admin recebe
+`403 FORBIDDEN`.
+
+A primeira chamada define `archivedAt` e gera exatamente um `EXAM_ARCHIVED`.
+Chamadas posteriores retornam `200` com o mesmo `archivedAt`, sem nova
+auditoria. A atualização é condicional para impedir auditoria duplicada em
+concorrência.
+
+Não existe restauração, substituição de PDF, endpoint de download ou delete
+físico na V1.
 
 ## 14. Physical progress
 

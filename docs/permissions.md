@@ -158,15 +158,26 @@ Condições:
 
 | Ação | Admin | Profissional | Atleta |
 |---|---:|---:|---:|
-| Listar | C | V | P |
-| Ver | C | V | P |
+| Listar | N | V | P |
+| Ver | N | V | P |
 | Cadastrar | N | V | P |
 | Fazer upload de PDF | N | V | P |
 | Atualizar metadados permitidos | N | V | P |
-| Arquivar | C | V | P |
+| Arquivar | N | V | P |
 | Excluir definitivamente | N | N | N |
 
-Admin não altera conteúdo clínico; acesso administrativo deve ser excepcional e auditável.
+Condições:
+
+- admin não possui acesso operacional a exames na V1;
+- atleta opera somente exames próprios e deriva `athleteId` do JWT;
+- profissional precisa estar `approved` e manter vínculo `active` para criar,
+  listar ou consultar;
+- profissional somente atualiza ou arquiva exame no qual é o
+  `professionalId` responsável;
+- exame criado pelo atleta possui `professionalId=null`: profissional
+  vinculado pode consultar, mas não atualizar ou arquivar;
+- exame arquivado não aceita atualização;
+- não existe substituição de PDF, download ou exclusão física na V1.
 
 ## 10. Evolução física e histórico
 

@@ -41,6 +41,9 @@ JWT_SECRET=substitua-por-uma-chave-segura-com-32-caracteres
 JWT_EXPIRES_IN=1d
 BCRYPT_SALT_ROUNDS=12
 FRONTEND_URL=http://localhost:4200
+PROFESSIONAL_DOCUMENT_MAX_BYTES=5242880
+EXAM_DOCUMENT_MAX_BYTES=10485760
+STORAGE_LOCAL_ROOT=.storage
 ```
 
 Quando upload estiver habilitado, variáveis específicas do provedor de storage devem ser adicionadas ao `.env.example`. Nunca commite segredos.
@@ -73,6 +76,25 @@ GET http://localhost:3000/api/v1/dashboard
 
 O backend seleciona a projeção de atleta, profissional ou admin pela identidade
 autenticada. Não existem rotas separadas por perfil.
+
+Exames:
+
+```text
+POST  /api/v1/exams
+GET   /api/v1/exams
+GET   /api/v1/exams/:id
+PATCH /api/v1/exams/:id
+PATCH /api/v1/exams/:id/archive
+```
+
+Atletas operam exames próprios; profissionais aprovados operam dentro de
+vínculo ativo e somente alteram ou arquivam exames de sua responsabilidade.
+Admin não possui acesso operacional a exames na V1.
+
+O PDF opcional é validado por MIME, extensão, tamanho e assinatura no início
+do arquivo, armazenado privadamente e nunca expõe `storageKey`, URL interna ou
+caminho nas respostas. A V1 não possui substituição nem endpoint de download
+de PDF. Arquivamento é lógico e idempotente.
 
 Backend publicado atualmente:
 

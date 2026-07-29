@@ -545,7 +545,7 @@ Modelo conceitual:
   document: {
     originalName: String,
     mimeType: String,
-    size: Number,
+    sizeBytes: Number,
     storageKey: String,
     url: String | null
   },
@@ -1233,14 +1233,13 @@ O módulo armazena e organiza informações de exames. O sistema não interpreta
   athleteId: ObjectId,
   professionalId: ObjectId | null,
   title: String,
-  type: String | null,
   examDate: Date,
   laboratory: String | null,
   notes: String | null,
   document: {
     originalName: String,
     mimeType: String,
-    size: Number,
+    sizeBytes: Number,
     storageKey: String,
     url: String | null
   } | null,
@@ -1261,11 +1260,19 @@ O módulo armazena e organiza informações de exames. O sistema não interpreta
 ### 17.3 Regras
 
 - atleta ou profissional aprovado vinculado cadastra conforme permissão;
+- admin não acessa o módulo de exames na V1;
 - infraestrutura de PDF reutiliza `StorageService`;
-- validar MIME, tamanho, assinatura e autorização;
+- validar MIME, extensão, tamanho e assinatura `%PDF-` exatamente no início;
 - não armazenar o binário no documento MongoDB;
 - não tornar arquivo privado publicamente navegável;
+- respostas expõem somente `originalName`, `mimeType` e `sizeBytes`;
+- não existe substituição, remoção ou download de PDF nesta etapa;
+- título possui 1–160 caracteres; laboratório até 160; notas até 2000;
+- resultados possuem no máximo 100 itens e aceitam somente campos textuais
+  limitados e sem estruturas aninhadas;
 - arquivamento preserva histórico;
+- arquivamento é idempotente e apenas a primeira chamada gera
+  `EXAM_ARCHIVED`;
 - sem DELETE físico na API da V1;
 - AuditLog não recebe conteúdo do exame nem PDF.
 

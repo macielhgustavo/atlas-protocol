@@ -43,7 +43,16 @@ class LocalStorageService extends StorageService {
     const storagePath = this.resolveStoragePath(storageKey);
 
     await fs.mkdir(rootDirectory, { recursive: true });
-    await fs.writeFile(storagePath, file.buffer, { flag: 'wx' });
+    try {
+      await fs.writeFile(storagePath, file.buffer, { flag: 'wx' });
+    } catch (error) {
+      if (error.code !== 'EEXIST') {
+        await fs.unlink(storagePath).catch((cleanupError) => {
+          if (cleanupError.code !== 'ENOENT') throw cleanupError;
+        });
+      }
+      throw error;
+    }
 
     return {
       storageKey,

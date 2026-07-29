@@ -14,6 +14,7 @@ const auditService = require('./audit-service');
 const storage = require('../storage');
 const AppError = require('../utils/app-error');
 const { generateToken } = require('../utils/jwt');
+const { sanitizeOriginalName } = require('../utils/pdf-file');
 const toSafeUser = require('../utils/user-response');
 
 function invalidCredentialsError() {
@@ -46,15 +47,6 @@ function professionalVerificationRequiredError() {
     ERROR_CODES.PROFESSIONAL_VERIFICATION_REQUIRED,
     'Verificação profissional necessária.',
   );
-}
-
-function sanitizeOriginalName(originalName) {
-  const baseName = String(originalName || '')
-    .replace(/^.*[\\/]/, '')
-    .replace(/[\u0000-\u001f\u007f]/g, '')
-    .trim();
-
-  return (baseName || 'document.pdf').slice(0, 255);
 }
 
 async function getProfessionalProfile(userId) {

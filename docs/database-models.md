@@ -431,7 +431,7 @@ Collection: `exams`
   ],
   document: {
     storageKey: String,
-    url: String,
+    url: String | null,
     originalName: String,
     mimeType: String,
     sizeBytes: Number
@@ -446,11 +446,24 @@ Collection: `exams`
 
 Regras:
 
-- título e data obrigatórios;
-- PDF suportado;
-- resultados estruturados opcionais;
+- título obrigatório, trim, 1–160;
+- data obrigatória;
+- `laboratory`: opcional, trim, 1–160, vazio normalizado para `null`;
+- `notes`: opcional, trim, 1–2000, vazio normalizado para `null`;
+- PDF opcional, com `document.storageKey` e `document.url` usando
+  `select:false`;
+- `document.url` pode ser `null`;
+- respostas expõem somente `originalName`, `mimeType` e `sizeBytes`;
+- resultados estruturados opcionais, default `[]`, máximo 100;
+- cada resultado aceita somente `marker` e `value` obrigatórios de 1–160,
+  `unit` opcional de 1–80 e `referenceRange` opcional de 1–240;
+- resultados não aceitam propriedades desconhecidas, estruturas aninhadas,
+  chaves perigosas ou valores não textuais;
 - sistema não interpreta resultado;
-- arquivamento lógico, sem delete físico.
+- `createdBy` é derivado do usuário autenticado;
+- atleta cria com `professionalId=null`; profissional cria com o próprio ID;
+- arquivamento lógico idempotente, sem restauração ou delete físico;
+- não existe substituição ou remoção do documento na V1.
 
 Índices:
 
