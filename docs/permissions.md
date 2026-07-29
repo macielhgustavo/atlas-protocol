@@ -183,13 +183,20 @@ Condições:
 
 | Ação | Admin | Profissional | Atleta |
 |---|---:|---:|---:|
-| Listar evolução | C | V | P |
-| Ver registro | C | V | P |
+| Listar evolução | N | V | P |
+| Ver registro | N | V | P |
 | Criar registro | N | V | P |
 | Atualizar registro permitido | N | V | P |
-| Arquivar | C | V | P |
+| Arquivar | N | V | P |
 | Ver timeline histórica | C | V | P |
 | Excluir fisicamente | N | N | N |
+
+Em evolução física, `V` exige profissional `approved` e vínculo `active`.
+Leitura alcança registros do atleta vinculado independentemente do autor.
+Atualização e arquivamento pelo profissional alcançam somente registros cujo
+`recordedBy` seja o próprio profissional. O atleta pode atualizar e arquivar
+qualquer registro próprio. Admin recebe `FORBIDDEN` em todas as rotas
+`/progress`; acesso administrativo excepcional está fora da V1.
 
 Timeline é somente leitura e derivada dos registros-fonte.
 

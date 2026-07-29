@@ -1282,24 +1282,48 @@ O módulo armazena e organiza informações de exames. O sistema não interpreta
 
 ### 18.1 Evolução física
 
-O módulo registra dados temporais informados pelo usuário.
+O módulo registra dados temporais informados pelo usuário e é exclusivamente
+descritivo. Não calcula IMC, tendências, classificações, comparações, metas ou
+recomendações.
 
 Modelo conceitual:
 
 ```js
 {
   athleteId: ObjectId,
-  professionalId: ObjectId | null,
+  recordedBy: ObjectId,
   referenceDate: Date,
   weightKg: Number | null,
   bodyFatPercent: Number | null,
-  measurements: Object,
+  measurements: {
+    chestCm: Number | null,
+    waistCm: Number | null,
+    armCm: Number | null,
+    thighCm: Number | null,
+    calfCm: Number | null
+  },
   notes: String | null,
   archivedAt: Date | null,
   createdAt: Date,
   updatedAt: Date
 }
 ```
+
+Não existe `professionalId`: `recordedBy`, derivado do JWT, representa o
+autor. Peso e medidas aceitam números finitos de 0 a 1000; percentual de
+gordura, de 0 a 100; todos com até três casas decimais e sem coerção de strings.
+É obrigatório ao menos um conteúdo significativo entre os valores ou
+observação.
+
+Atleta acessa e altera os próprios registros. Profissional `approved` lê
+registros de atleta com vínculo `active`, mas somente atualiza ou arquiva os
+que ele próprio registrou. Atualização de medidas usa merge controlado. Admin
+não acessa `/progress` na V1.
+
+Arquivamento é lógico, idempotente, sem restauração e protegido por
+compare-and-set para gerar um único `PROGRESS_ARCHIVED`. A listagem filtra por
+atleta, período e estado de arquivamento e ordena apenas por `referenceDate` ou
+`createdAt`. Não existe exclusão física.
 
 Regras:
 
@@ -1817,6 +1841,9 @@ PATCH /progress/:id/archive
 
 GET   /history
 ```
+
+Nesta etapa, somente os cinco endpoints de `/progress` são implementados.
+`GET /history` e a timeline permanecem fora da branch Physical Progress V1.
 
 ### 25.9 Estoque
 

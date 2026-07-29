@@ -646,21 +646,50 @@ na V1.
 
 ### DR-042 — Registro temporal
 
-Cada registro de evolução possui `referenceDate`.
+Cada registro de evolução possui `referenceDate`, pertence a um atleta e
+registra seu autor em `recordedBy`. O autor é sempre derivado do usuário
+autenticado; não existe `professionalId` no modelo.
 
 ### DR-043 — Valores
 
-Valores numéricos, quando presentes, devem respeitar validações de domínio e não podem ser negativos.
+`weightKg` e medidas aceitam números finitos entre 0 e 1000.
+`bodyFatPercent` aceita número finito entre 0 e 100. Todos os números aceitam
+no máximo três casas decimais e strings numéricas não são convertidas.
+
+Um registro precisa conter ao menos um valor não nulo entre peso, percentual
+de gordura, medidas ou observação. Somente `referenceDate`, medidas vazias ou
+campos todos nulos não formam um registro válido. Uma observação isolada é
+conteúdo válido.
 
 ### DR-044 — Sem avaliação automática
 
-O sistema pode mostrar diferenças históricas, mas não atribui causa, julgamento ou recomendação.
+O módulo é descritivo. Não calcula IMC, tendências, classificações, metas,
+comparações, pontuações ou recomendações e não atribui causa ou julgamento
+aos valores informados.
 
 ### DR-045 — Propriedade
 
-Atleta vê próprios registros.
+Atleta cria, lista e consulta somente registros próprios. Também pode atualizar
+e arquivar qualquer registro próprio não arquivado, inclusive quando criado
+por profissional.
 
-Profissional vê apenas atleta com vínculo `active`.
+Profissional `approved` cria e consulta registros somente para atletas com
+vínculo `active`. Pode atualizar ou arquivar apenas registro cujo `recordedBy`
+seja o próprio profissional, e o vínculo precisa continuar `active`.
+
+O acesso profissional para leitura não depende da autoria. O encerramento do
+vínculo remove o acesso imediatamente. Recursos fora do escopo retornam
+`RESOURCE_NOT_FOUND`.
+
+Admin não possui acesso operacional a evolução física na V1.
+
+Registros arquivados continuam consultáveis no histórico, não aceitam
+atualização e não podem ser restaurados. O arquivamento é idempotente e não
+altera o primeiro `archivedAt`.
+
+Atualização parcial de `measurements` usa merge controlado: somente as medidas
+enviadas são alteradas e `null` remove explicitamente uma medida. Após o merge,
+a regra de conteúdo mínimo continua obrigatória.
 
 ### DR-046 — Timeline agregada
 
@@ -674,6 +703,7 @@ A timeline histórica pode agregar eventos como:
 - registros de evolução.
 
 A timeline é uma visão derivada; não duplica nem altera os registros-fonte.
+Sua implementação não faz parte do módulo Physical Progress V1.
 
 ## 10. Estoque simples
 

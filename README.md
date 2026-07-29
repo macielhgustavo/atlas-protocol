@@ -180,6 +180,20 @@ cadastro profissional
 - dashboard por perfil;
 - auditoria.
 
+### Evolução física
+
+O recurso HTTP oficial é `/api/v1/progress` e oferece criação, listagem,
+detalhe, atualização parcial e arquivamento lógico. Atletas operam somente os
+próprios registros; profissionais aprovados dependem de vínculo ativo e só
+alteram ou arquivam registros cujo `recordedBy` seja o próprio profissional.
+Admin não acessa o módulo na V1.
+
+Os registros são descritivos, aceitam peso, percentual de gordura, medidas e
+observações, sem cálculos, classificações ou recomendações. Atualizações de
+medidas usam merge controlado, e o arquivamento é idempotente. Não existem
+DELETE, restauração ou Timeline nesta implementação; a timeline permanece um
+módulo futuro separado.
+
 ## Preservação histórica
 
 A V1 evita exclusão física de dados de negócio.

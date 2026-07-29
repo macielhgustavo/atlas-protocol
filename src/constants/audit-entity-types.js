@@ -1,6 +1,7 @@
 module.exports = Object.freeze({
   CHECK_IN: 'CheckIn',
   EXAM: 'Exam',
+  PHYSICAL_PROGRESS: 'PhysicalProgress',
   PROFESSIONAL_PROFILE: 'ProfessionalProfile',
   PROFESSIONAL_ATHLETE_LINK: 'ProfessionalAthleteLink',
   PROTOCOL: 'Protocol',

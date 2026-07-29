@@ -1172,7 +1172,9 @@ físico na V1.
 
 ### POST `/progress`
 
-Atleta próprio ou profissional vinculado.
+Atleta cria somente para si e não envia `athleteId`. Profissional `approved`
+deve enviar `athleteId` de atleta com vínculo `active`. `recordedBy` sempre vem
+do JWT e não é aceito no body. Admin recebe `403 FORBIDDEN`.
 
 ```json
 {
@@ -1189,25 +1191,105 @@ Atleta próprio ou profissional vinculado.
 }
 ```
 
+`referenceDate` é obrigatório. Deve existir ao menos um conteúdo significativo
+entre `weightKg`, `bodyFatPercent`, uma medida ou `notes`.
+
+`weightKg` e cada medida aceitam números finitos de 0 a 1000;
+`bodyFatPercent`, de 0 a 100. São permitidas até três casas decimais e strings
+numéricas são rejeitadas. `notes` possui de 1 a 2000 caracteres após trim;
+valor vazio é normalizado para `null`.
+
+`measurements` é estrito e aceita apenas `chestCm`, `waistCm`, `armCm`,
+`thighCm` e `calfCm`. Não são aceitos campos desconhecidos ou perigosos.
+
 ### GET `/progress`
 
 Filtros:
 
-- `athleteId`
-- `dateFrom`
-- `dateTo`
-- `archived`
-- paginação
+- `athleteId`;
+- `dateFrom` e `dateTo`, aplicados a `referenceDate`;
+- `archived=true|false`;
+- `page` e `limit`;
+- `sortBy=referenceDate|createdAt`;
+- `sortOrder=asc|desc`.
+
+O padrão é `archived=false`, `page=1`, `limit=20`,
+`sortBy=referenceDate` e `sortOrder=desc`. O limite máximo é 100 e `_id` é
+desempate na mesma direção. Não existe `archived=all`.
+
+Atleta lista somente os próprios registros. Profissional `approved` lista
+somente atletas com vínculo `active`; `athleteId` nunca amplia esse escopo.
+Admin recebe `403 FORBIDDEN`.
 
 ### GET `/progress/:id`
 
+Atleta consulta registro próprio. Profissional `approved` consulta registro de
+atleta com vínculo `active`, independentemente do autor. Recurso fora do
+escopo responde `404 RESOURCE_NOT_FOUND`. Registros arquivados permanecem
+consultáveis.
+
 ### PATCH `/progress/:id`
+
+Requer `application/json` e ao menos um entre `referenceDate`, `weightKg`,
+`bodyFatPercent`, `measurements` ou `notes`. Campos de ownership, autoria,
+arquivamento, timestamps e campos calculados são rejeitados.
+
+Atleta pode atualizar qualquer registro próprio não arquivado. Profissional
+`approved` pode atualizar apenas registro não arquivado que ele mesmo criou,
+mantido o vínculo `active`. Registro arquivado responde
+`422 INVALID_STATE_TRANSITION`.
+
+`measurements` usa merge controlado: propriedades omitidas são preservadas e
+`null` remove explicitamente uma medida. O resultado final precisa manter ao
+menos um conteúdo significativo. Atualização de metadados não gera auditoria
+na V1.
 
 ### PATCH `/progress/:id/archive`
 
-Arquivamento lógico.
+Requer `application/json` e body estritamente `{}`.
 
-Não existe delete físico.
+Atleta pode arquivar registro próprio. Profissional `approved` pode arquivar
+somente registro que ele criou, mantido o vínculo `active`. Admin recebe
+`403 FORBIDDEN`.
+
+O arquivamento é lógico, idempotente e concorrente por compare-and-set:
+a primeira chamada define `archivedAt` e gera exatamente um
+`PROGRESS_ARCHIVED`; chamadas seguintes preservam o instante original e não
+duplicam auditoria.
+
+Como nos demais fluxos atuais, mutação e `AuditLog` não usam transaction ou
+outbox na V1. O compare-and-set garante auditoria winner-only em concorrência,
+mas uma falha posterior ao arquivamento pode deixar a mutação persistida sem o
+evento; transaction/outbox permanece evolução futura.
+
+Não existem delete físico nem restauração na V1.
+
+Resposta segura do recurso:
+
+```json
+{
+  "id": "ObjectId",
+  "athleteId": "ObjectId",
+  "recordedBy": "ObjectId",
+  "referenceDate": "2026-08-01T00:00:00.000Z",
+  "weightKg": 80.5,
+  "bodyFatPercent": 12.5,
+  "measurements": {
+    "chestCm": 105,
+    "waistCm": 82,
+    "armCm": 40,
+    "thighCm": null,
+    "calfCm": null
+  },
+  "notes": "Registro informado.",
+  "archivedAt": null,
+  "createdAt": "2026-08-01T10:00:00.000Z",
+  "updatedAt": "2026-08-01T10:00:00.000Z"
+}
+```
+
+Não são retornados documento Mongoose, `__v`, usuários populados, valores
+calculados, classificações ou recomendações.
 
 ## 15. History / timeline
 

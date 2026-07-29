@@ -499,16 +499,24 @@ Collection: `physical_progress`
 
 Validações:
 
-- valores não negativos;
-- `bodyFatPercent` entre 0 e 100, quando presente;
-- ao menos um dado ou observação;
-- sem julgamento automático do resultado.
+- `athleteId`, `recordedBy` e `referenceDate` obrigatórios;
+- `weightKg` e medidas: números finitos entre 0 e 1000, até três casas;
+- `bodyFatPercent`: número finito entre 0 e 100, até três casas;
+- medidas estritas e normalizadas para as cinco chaves documentadas;
+- `notes` normalizada, com máximo de 2000 caracteres;
+- ao menos um dado ou observação não nulo;
+- `archivedAt=null` por padrão;
+- sem campos calculados ou julgamento automático do resultado.
 
-Índice:
+Índices:
 
 ```js
 { athleteId: 1, referenceDate: -1 }
+{ athleteId: 1, archivedAt: 1, referenceDate: -1 }
 ```
+
+Não existe índice único por atleta e data; múltiplos registros na mesma data
+são permitidos.
 
 ## 12. History/Timeline
 
