@@ -54,7 +54,23 @@ describe('LocalStorageService', () => {
     await expect(storage.remove(stored.storageKey)).resolves.toBe(false);
   });
 
+  it('lê somente pela chave opaca e trata arquivo inexistente', async () => {
+    const buffer = Buffer.from('%PDF-1.7\nleitura segura');
+    const stored = await storage.store({
+      buffer,
+      mimetype: 'application/pdf',
+    });
+
+    await expect(storage.read(stored.storageKey)).resolves.toEqual(buffer);
+    await expect(
+      storage.read('00000000-0000-4000-8000-000000000000.pdf'),
+    ).resolves.toBeNull();
+  });
+
   it('rejeita chave que tente sair da raiz configurada', async () => {
+    await expect(storage.read('../documento.pdf')).rejects.toThrow(
+      'Chave de storage inválida.',
+    );
     await expect(storage.remove('../documento.pdf')).rejects.toThrow(
       'Chave de storage inválida.',
     );

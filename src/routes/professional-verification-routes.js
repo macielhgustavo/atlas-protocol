@@ -31,6 +31,14 @@ router.get(
   asyncHandler(professionalVerificationController.listProfessionalVerifications),
 );
 router.get(
+  '/:id/document',
+  allowRoles(USER_ROLES.ADMIN, USER_ROLES.PROFESSIONAL),
+  validate(professionalVerificationIdParamsSchema, 'params'),
+  asyncHandler(
+    professionalVerificationController.getProfessionalVerificationDocument,
+  ),
+);
+router.get(
   '/:id',
   allowRoles(USER_ROLES.ADMIN),
   validate(professionalVerificationIdParamsSchema, 'params'),

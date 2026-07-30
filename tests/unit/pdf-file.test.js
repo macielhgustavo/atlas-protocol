@@ -1,4 +1,5 @@
 const {
+  buildPdfContentDisposition,
   hasPdfSignature,
   isPdfName,
   sanitizeOriginalName,
@@ -20,5 +21,17 @@ describe('segurança compartilhada de PDF', () => {
     expect(isPdfName('EXAME.PDF')).toBe(true);
     expect(isPdfName('exame.pdf.exe')).toBe(false);
     expect(sanitizeOriginalName('../../\u0000exame.pdf')).toBe('exame.pdf');
+  });
+
+  it('gera Content-Disposition inline sem permitir injeção de cabeçalho', () => {
+    const disposition = buildPdfContentDisposition(
+      '../../exame "clínico"\r\n.pdf',
+    );
+
+    expect(disposition).toBe(
+      'inline; filename="exame _clinico_.pdf"; ' +
+        "filename*=UTF-8''exame%20%22cl%C3%ADnico%22.pdf",
+    );
+    expect(disposition).not.toMatch(/[\r\n]/);
   });
 });

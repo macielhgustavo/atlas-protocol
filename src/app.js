@@ -1,17 +1,12 @@
 const express = require('express');
 const cors = require('cors');
 
+const env = require('./config/env');
 const errorHandler = require('./middlewares/error-handler');
 const notFoundHandler = require('./middlewares/not-found-handler');
 const routes = require('./routes');
 
 const app = express();
-
-const allowedOrigins = [
-  'http://localhost:4200',
-  'https://atlas-protocol-front-upstream.vercel.app',
-  'https://atlas-protocol-front.vercel.app',
-];
 
 app.disable('x-powered-by');
 
@@ -19,7 +14,7 @@ app.use(
   cors({
     origin(origin, callback) {
       // Permite Postman, testes e requisições internas sem Origin.
-      if (!origin || allowedOrigins.includes(origin)) {
+      if (!origin || env.corsOrigins.includes(origin)) {
         return callback(null, true);
       }
 

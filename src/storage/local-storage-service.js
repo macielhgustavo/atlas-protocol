@@ -60,6 +60,20 @@ class LocalStorageService extends StorageService {
     };
   }
 
+  async read(storageKey) {
+    const storagePath = this.resolveStoragePath(storageKey);
+
+    try {
+      return await fs.readFile(storagePath);
+    } catch (error) {
+      if (error.code === 'ENOENT') {
+        return null;
+      }
+
+      throw error;
+    }
+  }
+
   async remove(storageKey) {
     const storagePath = this.resolveStoragePath(storageKey);
 

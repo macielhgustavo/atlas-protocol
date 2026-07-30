@@ -1,4 +1,5 @@
 const bcrypt = require('bcrypt');
+const crypto = require('crypto');
 const mongoose = require('mongoose');
 const { MongoMemoryServer } = require('mongodb-memory-server');
 const request = require('supertest');
@@ -9,9 +10,11 @@ const AUDIT_ENTITY_TYPES = require('../../src/constants/audit-entity-types');
 const AuditLog = require('../../src/models/audit-log');
 const ProfessionalProfile = require('../../src/models/professional-profile');
 const User = require('../../src/models/user');
+const storage = require('../../src/storage');
 const { generateToken } = require('../../src/utils/jwt');
 
 const password = 'SenhaForte123!';
+const pdf = Buffer.from('%PDF-1.7\ncomprovante');
 
 async function createUser(role, overrides = {}) {
   return User.create({
@@ -42,6 +45,27 @@ function authorization(user) {
   return `Bearer ${generateToken(user)}`;
 }
 
+function binaryParser(response, callback) {
+  const chunks = [];
+  response.on('data', (chunk) => chunks.push(chunk));
+  response.on('end', () => callback(null, Buffer.concat(chunks)));
+}
+
+async function storeVerificationDocument(
+  originalName = 'comprovante clínico.pdf',
+) {
+  const storedDocument = await storage.store({
+    buffer: pdf,
+    mimetype: 'application/pdf',
+  });
+  return {
+    ...storedDocument,
+    originalName,
+    mimeType: 'application/pdf',
+    sizeBytes: pdf.length,
+  };
+}
+
 function expectNoSensitiveData(body) {
   const serialized = JSON.stringify(body);
   for (const forbidden of [
@@ -67,6 +91,15 @@ describe('verificacao profissional', () => {
   }, 120000);
 
   afterEach(async () => {
+    const profiles = await ProfessionalProfile.find({}).select(
+      '+verificationDocument.storageKey',
+    );
+    await Promise.allSettled(
+      profiles
+        .map((profile) => profile.verificationDocument?.storageKey)
+        .filter(Boolean)
+        .map((storageKey) => storage.remove(storageKey)),
+    );
     await Promise.all([
       AuditLog.deleteMany({}),
       ProfessionalProfile.deleteMany({}),
@@ -287,6 +320,92 @@ describe('verificacao profissional', () => {
       expect(invalid.body.error.code).toBe('INVALID_OBJECT_ID');
       expect(missing.status).toBe(404);
       expect(missing.body.error.code).toBe('RESOURCE_NOT_FOUND');
+    });
+  });
+
+  describe('GET /api/v1/professional-verifications/:id/document', () => {
+    it('retorna o PDF ao admin e ao próprio profissional, mesmo pendente', async () => {
+      const admin = await createUser('admin');
+      const professional = await createUser('professional');
+      const profile = await createProfessionalProfile(professional, {
+        verificationDocument: await storeVerificationDocument(),
+      });
+
+      const adminResponse = await request(app)
+        .get(`/api/v1/professional-verifications/${profile.id}/document`)
+        .set('Authorization', authorization(admin))
+        .buffer(true)
+        .parse(binaryParser);
+      const professionalResponse = await request(app)
+        .get(`/api/v1/professional-verifications/${profile.id}/document`)
+        .set('Authorization', authorization(professional))
+        .buffer(true)
+        .parse(binaryParser);
+
+      for (const response of [adminResponse, professionalResponse]) {
+        expect(response.status).toBe(200);
+        expect(response.headers['content-type']).toBe('application/pdf');
+        expect(response.headers['content-disposition']).toContain(
+          "filename*=UTF-8''comprovante%20cl%C3%ADnico.pdf",
+        );
+        expect(response.headers['cache-control']).toBe('private, no-store');
+        expect(response.headers['x-content-type-options']).toBe('nosniff');
+        expect(response.body).toEqual(pdf);
+      }
+    });
+
+    it('bloqueia atleta, oculta documento de outro profissional e exige autenticação', async () => {
+      const professional = await createUser('professional');
+      const otherProfessional = await createUser('professional');
+      const athlete = await createUser('athlete');
+      const profile = await createProfessionalProfile(professional, {
+        verificationDocument: await storeVerificationDocument(),
+      });
+
+      const unauthenticated = await request(app).get(
+        `/api/v1/professional-verifications/${profile.id}/document`,
+      );
+      const athleteResponse = await request(app)
+        .get(`/api/v1/professional-verifications/${profile.id}/document`)
+        .set('Authorization', authorization(athlete));
+      const professionalResponse = await request(app)
+        .get(`/api/v1/professional-verifications/${profile.id}/document`)
+        .set('Authorization', authorization(otherProfessional));
+
+      expect(unauthenticated.status).toBe(401);
+      expect(unauthenticated.body.error.code).toBe('AUTH_REQUIRED');
+      expect(athleteResponse.status).toBe(403);
+      expect(athleteResponse.body.error.code).toBe('FORBIDDEN');
+      expect(professionalResponse.status).toBe(404);
+      expect(professionalResponse.body.error.code).toBe('RESOURCE_NOT_FOUND');
+    });
+
+    it('retorna 404 para perfil ou arquivo inexistente', async () => {
+      const admin = await createUser('admin');
+      const professional = await createUser('professional');
+      const profile = await createProfessionalProfile(professional, {
+        verificationDocument: {
+          storageKey: `${crypto.randomUUID()}.pdf`,
+          url: '/private-files/ausente.pdf',
+          originalName: 'ausente.pdf',
+          mimeType: 'application/pdf',
+          sizeBytes: 10,
+        },
+      });
+
+      const missingProfile = await request(app)
+        .get(
+          `/api/v1/professional-verifications/${new mongoose.Types.ObjectId()}/document`,
+        )
+        .set('Authorization', authorization(admin));
+      const missingFile = await request(app)
+        .get(`/api/v1/professional-verifications/${profile.id}/document`)
+        .set('Authorization', authorization(admin));
+
+      expect(missingProfile.status).toBe(404);
+      expect(missingProfile.body.error.code).toBe('RESOURCE_NOT_FOUND');
+      expect(missingFile.status).toBe(404);
+      expect(missingFile.body.error.code).toBe('RESOURCE_NOT_FOUND');
     });
   });
 

@@ -512,6 +512,13 @@ async function createProtocolVersionWithoutLock(requester, protocolId, input) {
   const items = input.items
     ? await buildItems(input.items)
     : currentVersion.items.map((item) => item.toObject());
+  if (!items.length) {
+    throw new AppError(
+      400,
+      ERROR_CODES.PROTOCOL_EMPTY,
+      'Uma nova versão de protocolo precisa possuir ao menos um item.',
+    );
+  }
   if (!hasMaterialVersionChange(currentVersion, nextValues, items)) {
     throw validationError(
       'body',

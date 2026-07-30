@@ -261,23 +261,42 @@ async function listLinks(requester, query) {
       .limit(query.limit),
     ProfessionalAthleteLink.countDocuments(filters),
   ]);
-  const athleteIds = [
+const athleteIds = [
   ...new Set(
     links.map((link) => link.athleteId.toString()),
   ),
 ];
+const professionalIds = [
+  ...new Set(
+    links.map((link) => link.professionalId.toString()),
+  ),
+];
 
-const athletes = await User.find({
-  _id: { $in: athleteIds },
-  role: USER_ROLES.ATHLETE,
-})
-  .select('_id name email')
-  .lean();
+const [athletes, professionals] = await Promise.all([
+  User.find({
+    _id: { $in: athleteIds },
+    role: USER_ROLES.ATHLETE,
+  })
+    .select('_id name email')
+    .lean(),
+  User.find({
+    _id: { $in: professionalIds },
+    role: USER_ROLES.PROFESSIONAL,
+  })
+    .select('_id name email')
+    .lean(),
+]);
 
 const athleteMap = new Map(
   athletes.map((athlete) => [
     athlete._id.toString(),
     athlete,
+  ]),
+);
+const professionalMap = new Map(
+  professionals.map((professional) => [
+    professional._id.toString(),
+    professional,
   ]),
 );
 
@@ -286,6 +305,7 @@ const athleteMap = new Map(
   toLinkResponse(
     link,
     athleteMap.get(link.athleteId.toString()) || null,
+    professionalMap.get(link.professionalId.toString()) || null,
   ),
 ),
     meta: {

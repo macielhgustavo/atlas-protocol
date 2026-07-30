@@ -51,6 +51,11 @@ router.patch(
   asyncHandler(examController.updateExam),
 );
 router.get(
+  '/:id/document',
+  validate(examIdParamsSchema, 'params'),
+  asyncHandler(examController.getExamDocument),
+);
+router.get(
   '/:id',
   validate(examIdParamsSchema, 'params'),
   asyncHandler(examController.getExam),

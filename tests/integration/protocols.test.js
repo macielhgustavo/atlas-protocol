@@ -213,6 +213,8 @@ describe('protocolos e versionamento', () => {
       expect(response.body.data.currentVersion.items[0]).toMatchObject({
         substanceId: substance.id,
         substanceSnapshot: { name: 'Creatina', category: 'supplement' },
+        frequencyType: 'weekly',
+        weekDays: [1, 4],
       });
       expect(response.body.data.currentVersion.items[0]).not.toHaveProperty(
         'dosage',
@@ -270,6 +272,60 @@ describe('protocolos e versionamento', () => {
       expect(JSON.stringify(creationLogs[0].metadata)).not.toMatch(
         /items|instructions/i,
       );
+    });
+
+    it('valida weekDays conforme o tipo de frequência', async () => {
+      const admin = await createUser('admin');
+      const professional = await createUser('professional');
+      const athlete = await createUser('athlete');
+      const substance = await createSubstance(admin);
+      await createActiveLink(professional, athlete);
+
+      const validWeekly = await createProtocolThroughApi(
+        professional,
+        athlete,
+        substance,
+        {
+          items: [
+            {
+              substanceId: substance.id,
+              frequencyType: 'weekly',
+              weekDays: [1, 7],
+            },
+          ],
+        },
+      );
+      const invalidItems = [
+        { frequencyType: 'weekly', weekDays: [] },
+        { frequencyType: 'weekly', weekDays: [0] },
+        { frequencyType: 'weekly', weekDays: [8] },
+        { frequencyType: 'daily', weekDays: [1] },
+      ];
+      const invalidResponses = [];
+
+      for (const item of invalidItems) {
+        invalidResponses.push(
+          await createProtocolThroughApi(
+            professional,
+            athlete,
+            substance,
+            {
+              items: [{ substanceId: substance.id, ...item }],
+            },
+          ),
+        );
+      }
+
+      expect(validWeekly.status).toBe(201);
+      expect(
+        validWeekly.body.data.currentVersion.items[0].weekDays,
+      ).toEqual([1, 7]);
+      for (const response of invalidResponses) {
+        expect(response.status).toBe(400);
+        expect(response.body.error.code).toBe('VALIDATION_ERROR');
+      }
+      expect(await Protocol.countDocuments()).toBe(1);
+      expect(await ProtocolVersion.countDocuments()).toBe(1);
     });
 
     it('retorna ATHLETE_LINK_REQUIRED e não persiste parcialmente sem vínculo ativo', async () => {
@@ -1040,6 +1096,70 @@ describe('protocolos e versionamento', () => {
   });
 
   describe('POST /api/v1/protocols/:id/versions', () => {
+    it('preserva itens omitidos e rejeita versão vazia em active e paused', async () => {
+      const admin = await createUser('admin');
+      const professional = await createUser('professional');
+      const athlete = await createUser('athlete');
+      const substance = await createSubstance(admin, { name: 'Creatina' });
+      await createActiveLink(professional, athlete);
+      const created = await createProtocolThroughApi(
+        professional,
+        athlete,
+        substance,
+      );
+      const protocolId = created.body.data.protocol.id;
+      const originalItems = created.body.data.currentVersion.items;
+
+      await changeStatusThroughApi(professional, protocolId, 'active');
+      const changedDates = await createVersionThroughApi(
+        professional,
+        protocolId,
+        {
+          startDate: '2026-08-15T00:00:00.000Z',
+        },
+      );
+      const emptyWhileActive = await createVersionThroughApi(
+        professional,
+        protocolId,
+        { items: [] },
+      );
+      await changeStatusThroughApi(
+        professional,
+        protocolId,
+        'paused',
+        'Pausa operacional.',
+      );
+      const emptyWhilePaused = await createVersionThroughApi(
+        professional,
+        protocolId,
+        { items: [] },
+      );
+
+      expect(changedDates.status).toBe(201);
+      expect(changedDates.body.data.currentVersion).toMatchObject({
+        version: 2,
+        startDate: '2026-08-15T00:00:00.000Z',
+        items: originalItems,
+      });
+      for (const response of [emptyWhileActive, emptyWhilePaused]) {
+        expect(response.status).toBe(400);
+        expect(response.body.error).toMatchObject({
+          code: 'PROTOCOL_EMPTY',
+          message:
+            'Uma nova versão de protocolo precisa possuir ao menos um item.',
+        });
+      }
+      const protocol = await Protocol.findById(protocolId);
+      expect(protocol).toMatchObject({ currentVersion: 2, status: 'paused' });
+      expect(await ProtocolVersion.countDocuments({ protocolId })).toBe(2);
+      expect(
+        await AuditLog.countDocuments({
+          action: AUDIT_ACTIONS.PROTOCOL_VERSION_CREATED,
+          entityId: protocolId,
+        }),
+      ).toBe(1);
+    });
+
     it('cria versões sequenciais em active e paused sem alterar versões anteriores ou histórico de status', async () => {
       const admin = await createUser('admin');
       const professional = await createUser('professional');

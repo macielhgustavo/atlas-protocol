@@ -3,6 +3,10 @@ class StorageService {
     throw new Error('StorageService.store deve ser implementado.');
   }
 
+  async read(_storageKey) {
+    throw new Error('StorageService.read deve ser implementado.');
+  }
+
   async remove(_storageKey) {
     throw new Error('StorageService.remove deve ser implementado.');
   }

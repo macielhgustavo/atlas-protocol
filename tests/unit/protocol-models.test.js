@@ -410,5 +410,47 @@ describe('models de protocolo', () => {
         expect(itemSchema.path(undocumentedField)).toBeUndefined();
       }
     });
+
+    it('protege as regras de weekDays também no model', async () => {
+      function createVersion(frequencyType, weekDays) {
+        return new ProtocolVersion({
+          protocolId: new mongoose.Types.ObjectId(),
+          version: 1,
+          createdBy: new mongoose.Types.ObjectId(),
+          startDate: new Date(),
+          continuous: true,
+          items: [
+            {
+              substanceId: new mongoose.Types.ObjectId(),
+              substanceSnapshot: {
+                name: 'Item de teste',
+                category: 'supplement',
+              },
+              frequencyType,
+              weekDays,
+            },
+          ],
+        });
+      }
+
+      await expect(
+        createVersion('weekly', [1, 7]).validate(),
+      ).resolves.toBeUndefined();
+
+      for (const [frequencyType, weekDays, errorPath] of [
+        ['weekly', [], 'items.0.weekDays'],
+        ['weekly', [0], 'items.0.weekDays.0'],
+        ['weekly', [8], 'items.0.weekDays.0'],
+        ['daily', [1], 'items.0.weekDays'],
+      ]) {
+        await expect(
+          createVersion(frequencyType, weekDays).validate(),
+        ).rejects.toMatchObject({
+          errors: expect.objectContaining({
+            [errorPath]: expect.any(Object),
+          }),
+        });
+      }
+    });
   });
 });

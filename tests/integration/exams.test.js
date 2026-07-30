@@ -1,4 +1,5 @@
 const bcrypt = require('bcrypt');
+const crypto = require('crypto');
 const mongoose = require('mongoose');
 const { MongoMemoryServer } = require('mongodb-memory-server');
 const request = require('supertest');
@@ -20,6 +21,12 @@ let passwordHash;
 
 function authorization(user) {
   return `Bearer ${generateToken(user)}`;
+}
+
+function binaryParser(response, callback) {
+  const chunks = [];
+  response.on('data', (chunk) => chunks.push(chunk));
+  response.on('end', () => callback(null, Buffer.concat(chunks)));
 }
 
 async function createUser(role, verificationStatus = 'approved') {
@@ -83,6 +90,19 @@ async function createExam(athlete, overrides = {}) {
     createdBy: athlete.id,
     ...overrides,
   });
+}
+
+async function storeExamDocument(originalName = 'exame clínico.pdf') {
+  const storedDocument = await storage.store({
+    buffer: pdf,
+    mimetype: 'application/pdf',
+  });
+  return {
+    ...storedDocument,
+    originalName,
+    mimeType: 'application/pdf',
+    sizeBytes: pdf.length,
+  };
 }
 
 beforeAll(async () => {
@@ -372,12 +392,104 @@ describe('Exams API V1', () => {
     }
   });
 
+  describe('GET /api/v1/exams/:id/document', () => {
+    it('retorna o PDF ao próprio atleta e ao profissional aprovado vinculado', async () => {
+      const athlete = await createUser('athlete');
+      const professional = await createUser('professional');
+      await createLink(professional, athlete);
+      const exam = await createExam(athlete, {
+        document: await storeExamDocument(),
+      });
+
+      const athleteResponse = await request(app)
+        .get(`/api/v1/exams/${exam.id}/document`)
+        .set('Authorization', authorization(athlete))
+        .buffer(true)
+        .parse(binaryParser);
+      const professionalResponse = await request(app)
+        .get(`/api/v1/exams/${exam.id}/document`)
+        .set('Authorization', authorization(professional))
+        .buffer(true)
+        .parse(binaryParser);
+
+      for (const response of [athleteResponse, professionalResponse]) {
+        expect(response.status).toBe(200);
+        expect(response.headers['content-type']).toBe('application/pdf');
+        expect(response.headers['content-disposition']).toContain(
+          "filename*=UTF-8''exame%20cl%C3%ADnico.pdf",
+        );
+        expect(response.headers['cache-control']).toBe('private, no-store');
+        expect(response.headers['x-content-type-options']).toBe('nosniff');
+        expect(response.body).toEqual(pdf);
+      }
+    });
+
+    it('não permite acesso de terceiros e exige autenticação', async () => {
+      const athlete = await createUser('athlete');
+      const otherAthlete = await createUser('athlete');
+      const unlinkedProfessional = await createUser('professional');
+      const exam = await createExam(athlete, {
+        document: await storeExamDocument(),
+      });
+
+      const unauthenticated = await request(app).get(
+        `/api/v1/exams/${exam.id}/document`,
+      );
+      const athleteResponse = await request(app)
+        .get(`/api/v1/exams/${exam.id}/document`)
+        .set('Authorization', authorization(otherAthlete));
+      const professionalResponse = await request(app)
+        .get(`/api/v1/exams/${exam.id}/document`)
+        .set('Authorization', authorization(unlinkedProfessional));
+
+      expect(unauthenticated.status).toBe(401);
+      expect(unauthenticated.body.error.code).toBe('AUTH_REQUIRED');
+      expect(athleteResponse.status).toBe(404);
+      expect(athleteResponse.body.error.code).toBe('RESOURCE_NOT_FOUND');
+      expect(professionalResponse.status).toBe(404);
+      expect(professionalResponse.body.error.code).toBe('RESOURCE_NOT_FOUND');
+    });
+
+    it('retorna 404 para entidade, documento ou arquivo inexistente', async () => {
+      const athlete = await createUser('athlete');
+      const withoutDocument = await createExam(athlete);
+      const missingFile = await createExam(athlete, {
+        document: {
+          storageKey: `${crypto.randomUUID()}.pdf`,
+          url: null,
+          originalName: 'ausente.pdf',
+          mimeType: 'application/pdf',
+          sizeBytes: 10,
+        },
+      });
+
+      const calls = [
+        request(app).get(
+          `/api/v1/exams/${new mongoose.Types.ObjectId()}/document`,
+        ),
+        request(app).get(`/api/v1/exams/${withoutDocument.id}/document`),
+        request(app).get(`/api/v1/exams/${missingFile.id}/document`),
+      ];
+      const responses = await Promise.all(
+        calls.map((call) =>
+          call.set('Authorization', authorization(athlete))),
+      );
+
+      expect(responses.map((response) => response.status)).toEqual([
+        404, 404, 404,
+      ]);
+      responses.forEach((response) =>
+        expect(response.body.error.code).toBe('RESOURCE_NOT_FOUND'));
+    });
+  });
+
   it('admin recebe FORBIDDEN em todos os endpoints', async () => {
     const admin = await createUser('admin');
     const id = new mongoose.Types.ObjectId();
     const calls = [
       request(app).get('/api/v1/exams'),
       request(app).get(`/api/v1/exams/${id}`),
+      request(app).get(`/api/v1/exams/${id}/document`),
       request(app).post('/api/v1/exams').send(payload()),
       request(app).patch(`/api/v1/exams/${id}`).send({ title: 'X' }),
       request(app).patch(`/api/v1/exams/${id}/archive`).send({}),
@@ -386,7 +498,7 @@ describe('Exams API V1', () => {
       calls.map((call) => call.set('Authorization', authorization(admin))),
     );
     expect(responses.map((response) => response.status)).toEqual(
-      [403, 403, 403, 403, 403],
+      [403, 403, 403, 403, 403, 403],
     );
     responses.forEach((response) =>
       expect(response.body.error.code).toBe('FORBIDDEN'));

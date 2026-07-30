@@ -24,6 +24,14 @@ function notFoundError() {
   );
 }
 
+function documentNotFoundError() {
+  return new AppError(
+    404,
+    ERROR_CODES.RESOURCE_NOT_FOUND,
+    'Documento do exame não encontrado.',
+  );
+}
+
 function validationError(field, message) {
   return new AppError(
     400,
@@ -196,8 +204,17 @@ async function listExams(requester, query) {
   };
 }
 
-async function getAccessibleExam(requester, examId) {
-  const exam = await Exam.findById(examId);
+async function getAccessibleExam(
+  requester,
+  examId,
+  { includeStorageKey = false } = {},
+) {
+  let query = Exam.findById(examId);
+  if (includeStorageKey) {
+    query = query.select('+document.storageKey');
+  }
+
+  const exam = await query;
   if (!exam) throw notFoundError();
 
   if (requester.role === USER_ROLES.ATHLETE) {
@@ -210,6 +227,27 @@ async function getAccessibleExam(requester, examId) {
 
 async function getExam(requester, examId) {
   return toExamResponse(await getAccessibleExam(requester, examId));
+}
+
+async function getExamDocument(requester, examId) {
+  const exam = await getAccessibleExam(requester, examId, {
+    includeStorageKey: true,
+  });
+  if (!exam.document?.storageKey) throw documentNotFoundError();
+
+  let buffer;
+  try {
+    buffer = await storage.read(exam.document.storageKey);
+  } catch (error) {
+    if (error instanceof TypeError) throw documentNotFoundError();
+    throw error;
+  }
+  if (!buffer) throw documentNotFoundError();
+
+  return {
+    buffer,
+    originalName: sanitizeOriginalName(exam.document.originalName),
+  };
 }
 
 async function getMutableExam(requester, examId) {
@@ -266,6 +304,7 @@ module.exports = {
   archiveExam,
   createExam,
   getExam,
+  getExamDocument,
   listExams,
   updateExam,
 };

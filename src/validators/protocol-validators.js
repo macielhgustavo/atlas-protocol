@@ -30,6 +30,18 @@ const protocolItemSchema = Joi.object({
 })
   .custom((value, helpers) => {
     if (
+      value.frequencyType === PROTOCOL_FREQUENCY_TYPES.WEEKLY &&
+      value.weekDays.length === 0
+    ) {
+      return helpers.error('item.weekDaysRequired');
+    }
+    if (
+      value.frequencyType !== PROTOCOL_FREQUENCY_TYPES.WEEKLY &&
+      value.weekDays.length > 0
+    ) {
+      return helpers.error('item.weekDaysNotAllowed');
+    }
+    if (
       value.startDate &&
       value.endDate &&
       new Date(value.endDate) < new Date(value.startDate)
@@ -39,6 +51,10 @@ const protocolItemSchema = Joi.object({
     return value;
   })
   .messages({
+    'item.weekDaysRequired':
+      'Informe ao menos um dia da semana para frequência semanal.',
+    'item.weekDaysNotAllowed':
+      'weekDays deve estar vazio para frequências não semanais.',
     'item.invalidDateRange':
       'A data final do item não pode ser anterior à data inicial.',
   })

@@ -11,7 +11,9 @@ const PROFESSIONAL_VERIFICATION_STATUSES = require(
 const USER_ROLES = require('../constants/user-roles');
 const ProfessionalProfile = require('../models/professional-profile');
 const User = require('../models/user');
+const storage = require('../storage');
 const AppError = require('../utils/app-error');
+const { sanitizeOriginalName } = require('../utils/pdf-file');
 const toProfessionalVerificationResponse = require('../utils/professional-verification-response');
 const auditService = require('./audit-service');
 const notificationService = require('./notification-service');
@@ -32,6 +34,18 @@ function alreadyReviewedError() {
     ERROR_CODES.PROFESSIONAL_ALREADY_REVIEWED,
     'Esta verificação profissional já foi analisada.',
   );
+}
+
+function documentNotFoundError() {
+  return new AppError(
+    404,
+    ERROR_CODES.RESOURCE_NOT_FOUND,
+    'Documento da verificação profissional não encontrado.',
+  );
+}
+
+function sameId(left, right) {
+  return Boolean(left && right && left.toString() === right.toString());
 }
 
 function escapeRegExp(value) {
@@ -110,6 +124,39 @@ async function getProfessionalVerificationById(profileId) {
   });
 }
 
+async function getProfessionalVerificationDocument(requester, profileId) {
+  const profile = await ProfessionalProfile.findById(profileId).select(
+    '+verificationDocument.storageKey',
+  );
+  if (!profile) throw notFoundError();
+
+  if (
+    requester.role !== USER_ROLES.ADMIN &&
+    !sameId(profile.userId, requester.id)
+  ) {
+    throw notFoundError();
+  }
+  if (!profile.verificationDocument?.storageKey) {
+    throw documentNotFoundError();
+  }
+
+  let buffer;
+  try {
+    buffer = await storage.read(profile.verificationDocument.storageKey);
+  } catch (error) {
+    if (error instanceof TypeError) throw documentNotFoundError();
+    throw error;
+  }
+  if (!buffer) throw documentNotFoundError();
+
+  return {
+    buffer,
+    originalName: sanitizeOriginalName(
+      profile.verificationDocument.originalName,
+    ),
+  };
+}
+
 async function transitionPendingVerification(
   profileId,
   reviewerId,
@@ -184,6 +231,7 @@ module.exports = {
   approveProfessionalVerification,
   getOwnProfessionalVerification,
   getProfessionalVerificationById,
+  getProfessionalVerificationDocument,
   listProfessionalVerifications,
   rejectProfessionalVerification,
 };

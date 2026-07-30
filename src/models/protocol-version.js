@@ -26,12 +26,33 @@ const protocolItemSchema = new mongoose.Schema({
   weekDays: {
     type: [{ type: Number, min: 1, max: 7 }],
     default: [],
-    validate: {
-      validator(values) {
-        return new Set(values).size === values.length;
+    validate: [
+      {
+        validator(values) {
+          return new Set(values).size === values.length;
+        },
+        message: 'weekDays não pode conter valores duplicados.',
       },
-      message: 'weekDays não pode conter valores duplicados.',
-    },
+      {
+        validator(values) {
+          return (
+            this.frequencyType !== PROTOCOL_FREQUENCY_TYPES.WEEKLY ||
+            values.length > 0
+          );
+        },
+        message:
+          'Informe ao menos um dia da semana para frequência semanal.',
+      },
+      {
+        validator(values) {
+          return (
+            this.frequencyType === PROTOCOL_FREQUENCY_TYPES.WEEKLY ||
+            values.length === 0
+          );
+        },
+        message: 'weekDays deve estar vazio para frequências não semanais.',
+      },
+    ],
   },
   time: { type: String, match: /^([01]\d|2[0-3]):[0-5]\d$/, default: null },
   startDate: { type: Date, default: null },

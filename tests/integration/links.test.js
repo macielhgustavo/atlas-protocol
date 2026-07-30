@@ -471,6 +471,24 @@ describe('Links V2', () => {
           (link) => link.athleteId === athlete.id,
         ),
       ).toBe(true);
+      expect(athleteResponse.body.data).toEqual(
+        expect.arrayContaining([
+          expect.objectContaining({
+            professional: expect.objectContaining({
+              id: professional.id,
+              name: professional.name,
+              email: professional.email,
+            }),
+          }),
+          expect.objectContaining({
+            professional: expect.objectContaining({
+              id: otherProfessional.id,
+              name: otherProfessional.name,
+              email: otherProfessional.email,
+            }),
+          }),
+        ]),
+      );
       for (const link of adminResponse.body.data) expectSafeLink(link);
     });
 
