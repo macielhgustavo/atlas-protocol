@@ -54,11 +54,18 @@ const DAY_IN_MS = 24 * 60 * 60 * 1000;
 const HOUR_IN_MS = 60 * 60 * 1000;
 
 const DEMO_EMAILS = Object.freeze({
-  admin: 'admin@atlas.demo',
-  athlete: 'atleta@atlas.demo',
-  professional: 'profissional@atlas.demo',
-  pendingProfessional: 'pendente@atlas.demo',
+  admin: 'admin.demo@atlasprotocol.com',
+  athlete: 'atleta.demo@atlasprotocol.com',
+  professional: 'profissional.demo@atlasprotocol.com',
+  pendingProfessional: 'pendente.demo@atlasprotocol.com',
 });
+
+const LEGACY_DEMO_EMAILS = Object.freeze([
+  'admin@atlas.demo',
+  'atleta@atlas.demo',
+  'profissional@atlas.demo',
+  'pendente@atlas.demo',
+]);
 
 const DEMO_SUBSTANCE_NAMES = Object.freeze([
   '[DEMO] Hidratação diária',
