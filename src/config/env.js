@@ -11,6 +11,9 @@ const envSchema = Joi.object({
   MONGODB_URI: Joi.string().uri().required(),
   JWT_SECRET: Joi.string().min(32).required(),
   JWT_EXPIRES_IN: Joi.string().default('1h'),
+  CORS_ORIGINS: Joi.string()
+  .trim()
+  .default('http://localhost:4200'),
   BCRYPT_SALT_ROUNDS: Joi.number().integer().min(10).max(15).default(12),
   PROFESSIONAL_DOCUMENT_MAX_BYTES: Joi.number()
     .integer()
@@ -41,6 +44,10 @@ module.exports = Object.freeze({
   mongodbUri: value.MONGODB_URI,
   jwtSecret: value.JWT_SECRET,
   jwtExpiresIn: value.JWT_EXPIRES_IN,
+  corsOrigins: value.CORS_ORIGINS
+  .split(',')
+  .map((origin) => origin.trim())
+  .filter(Boolean),
   bcryptSaltRounds: value.BCRYPT_SALT_ROUNDS,
   professionalDocumentMaxBytes: value.PROFESSIONAL_DOCUMENT_MAX_BYTES,
   examDocumentMaxBytes: value.EXAM_DOCUMENT_MAX_BYTES,
