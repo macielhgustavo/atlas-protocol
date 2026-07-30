@@ -4,6 +4,7 @@ const { MongoMemoryServer } = require('mongodb-memory-server');
 const request = require('supertest');
 
 const app = require('../../src/app');
+const ProfessionalProfile = require('../../src/models/professional-profile');
 const Substance = require('../../src/models/substance');
 const User = require('../../src/models/user');
 const { normalizeSubstanceName } = require('../../src/utils/normalize-substance-name');
@@ -16,6 +17,26 @@ async function createUser(role) {
     passwordHash: await bcrypt.hash('SenhaForte123!', 10),
     role,
   });
+}
+
+async function createApprovedProfessional() {
+  const professional = await createUser('professional');
+  await ProfessionalProfile.create({
+    userId: professional.id,
+    verificationStatus: 'approved',
+    verificationDocument: {
+      storageKey: `${professional.id}.pdf`,
+      url: `/private-files/${professional.id}.pdf`,
+      originalName: 'documento.pdf',
+      mimeType: 'application/pdf',
+      sizeBytes: 20,
+    },
+    submittedAt: new Date(),
+    reviewedAt: new Date(),
+    reviewedBy: professional.id,
+    rejectionReason: null,
+  });
+  return professional;
 }
 
 async function createSubstance(createdBy, overrides = {}) {
@@ -46,7 +67,11 @@ describe('biblioteca de substâncias', () => {
   }, 120000);
 
   afterEach(async () => {
-    await Promise.all([Substance.deleteMany({}), User.deleteMany({})]);
+    await Promise.all([
+      ProfessionalProfile.deleteMany({}),
+      Substance.deleteMany({}),
+      User.deleteMany({}),
+    ]);
   });
 
   afterAll(async () => {
@@ -84,20 +109,39 @@ describe('biblioteca de substâncias', () => {
       expect(stored.normalizedName).toBe('creatina monohidratada');
     });
 
-    it.each(['professional', 'athlete'])(
-      'impede cadastro pelo perfil %s',
-      async (role) => {
-        const user = await createUser(role);
+    it('permite que profissional aprovado cadastre substância', async () => {
+      const professional = await createApprovedProfessional();
 
-        const response = await request(app)
-          .post('/api/v1/substances')
-          .set('Authorization', authorization(user))
-          .send({ name: 'Creatina', category: 'supplement' });
+      const response = await request(app)
+        .post('/api/v1/substances')
+        .set('Authorization', authorization(professional))
+        .send({
+          name: 'Creatina',
+          description: 'Item criado durante o protocolo.',
+          category: 'supplement',
+          defaultUnit: 'g',
+        });
 
-        expect(response.status).toBe(403);
-        expect(response.body.error.code).toBe('FORBIDDEN');
-      },
-    );
+      expect(response.status).toBe(201);
+      expect(response.body.data.substance).toMatchObject({
+        name: 'Creatina',
+        category: 'supplement',
+        defaultUnit: 'g',
+        createdBy: professional.id,
+      });
+    });
+
+    it('impede cadastro pelo perfil athlete', async () => {
+      const athlete = await createUser('athlete');
+
+      const response = await request(app)
+        .post('/api/v1/substances')
+        .set('Authorization', authorization(athlete))
+        .send({ name: 'Creatina', category: 'supplement' });
+
+      expect(response.status).toBe(403);
+      expect(response.body.error.code).toBe('FORBIDDEN');
+    });
 
     it('rejeita nomes equivalentes por caixa e espaços', async () => {
       const admin = await createUser('admin');

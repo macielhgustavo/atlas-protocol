@@ -3,6 +3,9 @@ const express = require('express');
 const USER_ROLES = require('../constants/user-roles');
 const substanceController = require('../controllers/substance-controller');
 const authMiddleware = require('../middlewares/auth-middleware');
+const professionalApprovalMiddleware = require(
+  '../middlewares/professional-approval-middleware',
+);
 const allowRoles = require('../middlewares/role-middleware');
 const validate = require('../middlewares/validation-middleware');
 const asyncHandler = require('../utils/async-handler');
@@ -21,7 +24,8 @@ router.use(authMiddleware);
 
 router.post(
   '/',
-  allowRoles(USER_ROLES.ADMIN),
+  allowRoles(USER_ROLES.ADMIN, USER_ROLES.PROFESSIONAL),
+  professionalApprovalMiddleware,
   validate(createSubstanceSchema),
   asyncHandler(substanceController.createSubstance),
 );
