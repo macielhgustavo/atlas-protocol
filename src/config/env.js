@@ -7,6 +7,9 @@ const envSchema = Joi.object({
   NODE_ENV: Joi.string()
     .valid('development', 'test', 'production')
     .default('development'),
+    CORS_ORIGINS: Joi.string()
+  .trim()
+  .default('http://localhost:4200'),
   PORT: Joi.number().port().default(3000),
   MONGODB_URI: Joi.string().uri().required(),
   JWT_SECRET: Joi.string().min(32).required(),
@@ -39,6 +42,10 @@ module.exports = Object.freeze({
   nodeEnv: value.NODE_ENV,
   port: value.PORT,
   mongodbUri: value.MONGODB_URI,
+  corsOrigins: value.CORS_ORIGINS
+  .split(',')
+  .map((origin) => origin.trim())
+  .filter(Boolean),
   jwtSecret: value.JWT_SECRET,
   jwtExpiresIn: value.JWT_EXPIRES_IN,
   bcryptSaltRounds: value.BCRYPT_SALT_ROUNDS,
