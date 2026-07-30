@@ -10,6 +10,7 @@ const app = express();
 const allowedOrigins = [
   'http://localhost:4200',
   'https://atlas-protocol-front-upstream.vercel.app',
+  'https://atlas-protocol-front.vercel.app',
 ];
 
 app.disable('x-powered-by');
